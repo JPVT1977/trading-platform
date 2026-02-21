@@ -1,16 +1,23 @@
-# Dependencies
-node_modules/
-vendor/
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Build output
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
 dist/
 build/
-out/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Environment files
+.env
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -22,9 +29,18 @@ out/
 .DS_Store
 Thumbs.db
 
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
 # Logs
 *.log
 logs/
 
-# Coverage
-coverage/
+# Type checking
+.mypy_cache/
+
+# Ruff
+.ruff_cache/

@@ -1,0 +1,44 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bot/**"
+      - "tests/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Python 3.13)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install TA-Lib system library
+        run: |
+          wget -q https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
+          tar -xzf ta-lib-0.6.4-src.tar.gz
+          cd ta-lib-0.6.4
+          ./configure --prefix=/usr/local
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: ruff check bot/ tests/
+
+      - name: Run tests
+        run: pytest --cov=bot --cov-report=xml -v

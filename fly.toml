@@ -1,0 +1,51 @@
+# Divergence Trading Bot — Fly.io Configuration
+# Deployed to Sydney region (matches Guardian Assist infrastructure)
+
+app = "trading-bot"
+primary_region = "syd"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy = "immediate"
+
+[env]
+  TRADING_MODE = "paper"
+  LOG_LEVEL = "INFO"
+  HEALTH_CHECK_PORT = "8080"
+  EXCHANGE_ID = "bybit"
+  EXCHANGE_SANDBOX = "true"
+  ANALYSIS_INTERVAL_MINUTES = "15"
+  SYMBOLS = '["BTC/USDT","ETH/USDT"]'
+  TIMEFRAMES = '["1h","4h"]'
+  # Secrets set via: fly secrets set ANTHROPIC_API_KEY=... etc.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[checks]
+  [checks.health]
+    grace_period = "120s"
+    interval = "30s"
+    method = "GET"
+    path = "/health/deep"
+    port = 8080
+    timeout = "10s"
+    type = "http"
+    restart_limit = 3

@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+from loguru import logger
+
+from bot.config import Settings
+from bot.models import DivergenceSignal, IndicatorSet, ValidationResult
+
+
+def _last_valid(arr: list[float | None]) -> float | None:
+    """Get the last non-None value from an indicator array."""
+    for v in reversed(arr):
+        if v is not None:
+            return v
+    return None
+
+
+def validate_signal(
+    signal: DivergenceSignal,
+    indicators: IndicatorSet,
+    settings: Settings,
+) -> ValidationResult:
+    """Deterministic signal validation. 6 hard-coded rules. <1ms execution.
+
+    This replaces the blueprint's two-pass Claude validation approach.
+    Zero API calls. Pure Python logic. Fully testable.
+    """
+
+    # Rule 1: Minimum confidence threshold
+    if signal.confidence < settings.min_confidence:
+        return ValidationResult(
+            passed=False,
+            reason=f"Confidence {signal.confidence:.2f} below {settings.min_confidence} threshold",
+        )
+
+    # Rule 2: Must have entry, stop loss, and at least one take profit
+    if not all([signal.entry_price, signal.stop_loss, signal.take_profit_1]):
+        return ValidationResult(
+            passed=False,
+            reason="Missing entry_price, stop_loss, or take_profit_1",
+        )
+
+    # Rule 3: Stop loss must be on the correct side of entry
+    if signal.direction is not None and signal.entry_price and signal.stop_loss:
+        if signal.direction.value == "long":
+            if signal.stop_loss >= signal.entry_price:
+                return ValidationResult(
+                    passed=False,
+                    reason="Long signal: stop_loss must be below entry_price",
+                )
+            if signal.take_profit_1 and signal.take_profit_1 <= signal.entry_price:
+                return ValidationResult(
+                    passed=False,
+                    reason="Long signal: take_profit_1 must be above entry_price",
+                )
+        elif signal.direction.value == "short":
+            if signal.stop_loss <= signal.entry_price:
+                return ValidationResult(
+                    passed=False,
+                    reason="Short signal: stop_loss must be above entry_price",
+                )
+            if signal.take_profit_1 and signal.take_profit_1 >= signal.entry_price:
+                return ValidationResult(
+                    passed=False,
+                    reason="Short signal: take_profit_1 must be below entry_price",
+                )
+
+    # Rule 4: Minimum risk/reward ratio
+    if signal.entry_price and signal.stop_loss and signal.take_profit_1:
+        risk = abs(signal.entry_price - signal.stop_loss)
+        reward = abs(signal.take_profit_1 - signal.entry_price)
+        if risk == 0:
+            return ValidationResult(passed=False, reason="Zero risk distance (entry == stop_loss)")
+        rr_ratio = reward / risk
+        if rr_ratio < settings.min_risk_reward:
+            return ValidationResult(
+                passed=False,
+                reason=f"R:R ratio {rr_ratio:.2f} below {settings.min_risk_reward} minimum",
+            )
+
+    # Rule 5: RSI must not contradict the signal direction
+    latest_rsi = _last_valid(indicators.rsi)
+    if latest_rsi is not None and signal.direction is not None:
+        if signal.direction.value == "long" and latest_rsi > 80:
+            return ValidationResult(
+                passed=False,
+                reason=f"Long signal but RSI={latest_rsi:.1f} is extremely overbought (>80)",
+            )
+        if signal.direction.value == "short" and latest_rsi < 20:
+            return ValidationResult(
+                passed=False,
+                reason=f"Short signal but RSI={latest_rsi:.1f} is extremely oversold (<20)",
+            )
+
+    # Rule 6: Stop loss distance must be within reasonable ATR range (0.5-5x)
+    latest_atr = _last_valid(indicators.atr)
+    if latest_atr and latest_atr > 0 and signal.entry_price and signal.stop_loss:
+        stop_distance = abs(signal.entry_price - signal.stop_loss)
+        atr_multiple = stop_distance / latest_atr
+        if atr_multiple < 0.5:
+            return ValidationResult(
+                passed=False,
+                reason=f"Stop too tight: {atr_multiple:.1f}x ATR (minimum 0.5x)",
+            )
+        if atr_multiple > 5.0:
+            return ValidationResult(
+                passed=False,
+                reason=f"Stop too wide: {atr_multiple:.1f}x ATR (maximum 5.0x)",
+            )
+
+    logger.debug(
+        f"Signal validated: {signal.symbol}/{signal.timeframe} "
+        f"confidence={signal.confidence:.2f}"
+    )
+    return ValidationResult(passed=True, reason="All validation rules passed")

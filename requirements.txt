@@ -1,0 +1,33 @@
+# Exchange & market data
+ccxt>=4.4.0
+
+# Technical analysis (requires system TA-Lib: brew install ta-lib)
+TA-Lib>=0.6.0
+
+# Claude API
+anthropic>=0.45.0
+
+# Database (async)
+asyncpg>=0.30.0
+
+# HTTP server (health checks)
+aiohttp>=3.11.0
+
+# Scheduling
+APScheduler>=3.11.0
+
+# Configuration
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# Logging
+loguru>=0.7.0
+
+# Retry logic
+tenacity>=9.0.0
+
+# WebSockets (real-time streams)
+websockets>=14.0
+
+# Data processing
+numpy>=2.2.0
