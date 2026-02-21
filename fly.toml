@@ -1,7 +1,7 @@
 # Divergence Trading Bot — Fly.io Configuration
 # Deployed to Sydney region (matches Guardian Assist infrastructure)
 
-app = "trading-bot"
+app = "jpvt-trading-bot"
 primary_region = "syd"
 
 [build]

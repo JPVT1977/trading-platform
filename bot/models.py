@@ -48,22 +48,26 @@ class Candle(BaseModel):
 
 
 class IndicatorSet(BaseModel):
-    """All computed indicators for a symbol/timeframe pair."""
+    """All computed indicators for a symbol/timeframe pair.
+
+    TA-Lib returns None/NaN for the first N periods (warmup), so all
+    indicator arrays must accept Optional values.
+    """
     symbol: str
     timeframe: str
     timestamp: datetime
-    rsi: list[float]
-    macd_line: list[float]
-    macd_signal: list[float]
-    macd_histogram: list[float]
-    obv: list[float]
-    mfi: list[float]
-    stoch_k: list[float]
-    stoch_d: list[float]
-    atr: list[float]
-    ema_short: list[float]
-    ema_medium: list[float]
-    ema_long: list[float]
+    rsi: list[Optional[float]]
+    macd_line: list[Optional[float]]
+    macd_signal: list[Optional[float]]
+    macd_histogram: list[Optional[float]]
+    obv: list[Optional[float]]
+    mfi: list[Optional[float]]
+    stoch_k: list[Optional[float]]
+    stoch_d: list[Optional[float]]
+    atr: list[Optional[float]]
+    ema_short: list[Optional[float]]
+    ema_medium: list[Optional[float]]
+    ema_long: list[Optional[float]]
     closes: list[float]
     highs: list[float]
     lows: list[float]
