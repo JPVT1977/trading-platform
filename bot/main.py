@@ -11,6 +11,7 @@ Wires all five layers together:
 from __future__ import annotations
 
 import asyncio
+import json
 import signal as signal_module
 import sys
 import time
@@ -127,7 +128,7 @@ async def analysis_cycle(
             result.signals_found,
             result.signals_validated,
             result.orders_placed,
-            {"errors": result.errors} if result.errors else None,
+            json.dumps({"errors": result.errors}) if result.errors else None,
             result.duration_ms,
         )
     except Exception as e:

@@ -35,7 +35,7 @@ class Settings(BaseSettings):
 
     # --- Claude API ---
     anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-5-20250514"
+    claude_model: str = "claude-sonnet-4-5-20250929"
     claude_max_tokens: int = 1024
 
     # --- Database (asyncpg) ---
