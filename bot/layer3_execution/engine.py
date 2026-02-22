@@ -48,7 +48,8 @@ class ExecutionEngine:
         self._sms = sms
 
     async def execute_signal(
-        self, signal: DivergenceSignal, portfolio: PortfolioState
+        self, signal: DivergenceSignal, portfolio: PortfolioState,
+        signal_id: str | None = None,
     ) -> TradeOrder | None:
         """Full signal-to-order pipeline.
 
@@ -129,16 +130,14 @@ class ExecutionEngine:
             await self._telegram.send_error_alert(str(e), f"Order failed: {order.symbol}")
             # Persist the failed order for auditing, then return None
             try:
-                signal_id = await self._persist_signal(signal)
                 order.signal_id = signal_id
                 await self._persist_order(order)
             except Exception as persist_err:
                 logger.error(f"Failed to persist error order: {persist_err}")
             return None
 
-        # Step 5: Persist to database
+        # Step 5: Persist order to database (signal already persisted by caller)
         try:
-            signal_id = await self._persist_signal(signal)
             order.signal_id = signal_id
             order_id = await self._persist_order(order)
             order.id = order_id

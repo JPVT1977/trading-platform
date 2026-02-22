@@ -36,6 +36,39 @@ from bot.layer5_monitoring.telegram import TelegramClient
 from bot.models import AnalysisCycleResult
 
 
+async def _persist_signal(
+    db: Database,
+    signal,
+    validated: bool,
+    validation_reason: str,
+) -> str | None:
+    """Save a detected signal to the database immediately. Returns signal ID."""
+    try:
+        from bot.database import queries as q
+        row = await db.pool.fetchrow(
+            q.INSERT_SIGNAL,
+            signal.symbol,
+            signal.timeframe,
+            signal.divergence_type.value if signal.divergence_type else "none",
+            signal.indicator,
+            signal.confidence,
+            signal.direction.value if signal.direction else None,
+            signal.entry_price,
+            signal.stop_loss,
+            signal.take_profit_1,
+            signal.take_profit_2,
+            signal.take_profit_3,
+            signal.reasoning,
+            json.dumps(signal.model_dump(mode="json")),
+            validated,
+            validation_reason,
+        )
+        return str(row["id"]) if row else None
+    except Exception as e:
+        logger.error(f"Failed to persist signal: {e}")
+        return None
+
+
 async def analysis_cycle(
     settings: Settings,
     market: MarketDataClient,
@@ -116,6 +149,12 @@ async def analysis_cycle(
 
                 # --- Layer 2: Validation (deterministic, <1ms) ---
                 validation = validate_signal(signal, indicators, settings)
+
+                # Persist EVERY detected signal immediately (validated or not)
+                signal_id = await _persist_signal(
+                    db, signal, validation.passed, validation.reason or "All validation rules passed",
+                )
+
                 if not validation.passed:
                     logger.info(f"Signal rejected: {validation.reason}")
                     continue
@@ -128,7 +167,7 @@ async def analysis_cycle(
                     continue
 
                 # --- Layer 3 + 4: Execution (includes risk checks) ---
-                order = await engine.execute_signal(signal, portfolio)
+                order = await engine.execute_signal(signal, portfolio, signal_id=signal_id)
                 if order:
                     result.orders_placed += 1
 
