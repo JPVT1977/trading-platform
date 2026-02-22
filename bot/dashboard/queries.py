@@ -32,6 +32,10 @@ UPDATE_LAST_LOGIN = """
     UPDATE users SET last_login_at = NOW() WHERE id = $1
 """
 
+UPDATE_USER_PASSWORD = """
+    UPDATE users SET password_hash = $1 WHERE id = $2
+"""
+
 UPSERT_USER = """
     INSERT INTO users (email, password_hash, display_name)
     VALUES ($1, $2, $3)

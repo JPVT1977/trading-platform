@@ -86,3 +86,56 @@ class AuthViews:
         response = web.HTTPFound("/login")
         response.del_cookie("session_id")
         raise response
+
+    # ------------------------------------------------------------------
+    # Change password
+    # ------------------------------------------------------------------
+
+    @aiohttp_jinja2.template("change_password.html")
+    async def change_password_page(self, request: web.Request) -> dict:
+        """GET /dashboard/change-password — render change-password form."""
+        return {"active_page": "change_password", "user": request["user"]}
+
+    async def change_password_post(self, request: web.Request) -> web.Response:
+        """POST /dashboard/change-password — validate and update password."""
+        user = request["user"]
+        data = await request.post()
+        current_password = str(data.get("current_password", ""))
+        new_password = str(data.get("new_password", ""))
+        confirm_password = str(data.get("confirm_password", ""))
+
+        ctx = {"active_page": "change_password", "user": user}
+
+        if not current_password or not new_password or not confirm_password:
+            ctx["error"] = "All fields are required"
+            return aiohttp_jinja2.render_template("change_password.html", request, ctx)
+
+        if new_password != confirm_password:
+            ctx["error"] = "New passwords do not match"
+            return aiohttp_jinja2.render_template("change_password.html", request, ctx)
+
+        if len(new_password) < 8:
+            ctx["error"] = "New password must be at least 8 characters"
+            return aiohttp_jinja2.render_template("change_password.html", request, ctx)
+
+        # Fetch current hash from DB
+        db_user = await self._pool.fetchrow(dq.GET_USER_BY_EMAIL, user["email"])
+        if not db_user:
+            ctx["error"] = "User not found"
+            return aiohttp_jinja2.render_template("change_password.html", request, ctx)
+
+        if not bcrypt.checkpw(
+            current_password.encode("utf-8"),
+            db_user["password_hash"].encode("utf-8"),
+        ):
+            ctx["error"] = "Current password is incorrect"
+            return aiohttp_jinja2.render_template("change_password.html", request, ctx)
+
+        # Hash and save
+        new_hash = bcrypt.hashpw(
+            new_password.encode("utf-8"), bcrypt.gensalt(rounds=12)
+        ).decode("utf-8")
+        await self._pool.execute(dq.UPDATE_USER_PASSWORD, new_hash, db_user["id"])
+
+        ctx["success"] = "Password changed successfully"
+        return aiohttp_jinja2.render_template("change_password.html", request, ctx)

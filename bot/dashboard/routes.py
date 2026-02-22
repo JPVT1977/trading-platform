@@ -47,6 +47,8 @@ def setup_routes(
     app.router.add_get("/login", auth.login_page)
     app.router.add_post("/login", auth.login_post)
     app.router.add_post("/logout", auth.logout)
+    app.router.add_get("/dashboard/change-password", auth.change_password_page)
+    app.router.add_post("/dashboard/change-password", auth.change_password_post)
 
     # Dashboard pages
     app.router.add_get("/dashboard", overview.overview_page)
