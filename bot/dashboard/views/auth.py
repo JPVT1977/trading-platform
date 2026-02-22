@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -86,6 +87,63 @@ class AuthViews:
         response = web.HTTPFound("/login")
         response.del_cookie("session_id")
         raise response
+
+    # ------------------------------------------------------------------
+    # Reset password (unauthenticated — gated by DASHBOARD_RESET_CODE)
+    # ------------------------------------------------------------------
+
+    @aiohttp_jinja2.template("reset_password.html")
+    async def reset_password_page(self, request: web.Request) -> dict:
+        """GET /reset-password — render reset-password form."""
+        reset_code = os.environ.get("DASHBOARD_RESET_CODE", "")
+        if not reset_code:
+            return {"error": "Password reset is not configured. Set DASHBOARD_RESET_CODE in Fly secrets.", "disabled": True}
+        return {"error": None, "success": None, "disabled": False}
+
+    async def reset_password_post(self, request: web.Request) -> web.Response:
+        """POST /reset-password — verify reset code and set new password."""
+        data = await request.post()
+        email = str(data.get("email", "")).strip().lower()
+        reset_code = str(data.get("reset_code", ""))
+        new_password = str(data.get("new_password", ""))
+        confirm_password = str(data.get("confirm_password", ""))
+
+        ctx: dict = {"disabled": False}
+
+        expected_code = os.environ.get("DASHBOARD_RESET_CODE", "")
+        if not expected_code:
+            ctx["error"] = "Password reset is not configured."
+            ctx["disabled"] = True
+            return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
+
+        if not email or not reset_code or not new_password or not confirm_password:
+            ctx["error"] = "All fields are required"
+            return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
+
+        if not secrets.compare_digest(reset_code, expected_code):
+            ctx["error"] = "Invalid reset code"
+            return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
+
+        if new_password != confirm_password:
+            ctx["error"] = "Passwords do not match"
+            return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
+
+        if len(new_password) < 8:
+            ctx["error"] = "Password must be at least 8 characters"
+            return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
+
+        user = await self._pool.fetchrow(dq.GET_USER_BY_EMAIL, email)
+        if not user:
+            ctx["error"] = "No account found with that email"
+            return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
+
+        new_hash = bcrypt.hashpw(
+            new_password.encode("utf-8"), bcrypt.gensalt(rounds=12)
+        ).decode("utf-8")
+        await self._pool.execute(dq.UPDATE_USER_PASSWORD, new_hash, user["id"])
+
+        ctx["success"] = "Password reset successfully. You can now log in."
+        return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
 
     # ------------------------------------------------------------------
     # Change password
