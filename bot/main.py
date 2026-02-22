@@ -302,8 +302,7 @@ async def main() -> None:
         misfire_grace_time=30,
     )
     scheduler.start()
-    logger.info("Scheduler started (analysis: every %dmin, SL/TP monitor: every 2min)",
-                settings.analysis_interval_minutes)
+    logger.info(f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, SL/TP monitor: every 2min)")
 
     # Run first cycle immediately
     logger.info("Running initial analysis cycle...")

@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     min_confidence: float = 0.7
 
     # --- Scheduling ---
-    analysis_interval_minutes: int = 15
+    analysis_interval_minutes: int = 5
     health_check_port: int = 8080
 
     # --- Indicator Parameters ---
