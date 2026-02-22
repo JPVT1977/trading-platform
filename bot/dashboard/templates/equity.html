@@ -33,6 +33,12 @@
     document.addEventListener('DOMContentLoaded', function() {
         initEquityChart('equityChart');
         loadEquityData('7d');
+        // Auto-refresh chart data every 30 seconds
+        setInterval(function() {
+            var activeBtn = document.querySelector('.period-btn.active');
+            var period = activeBtn ? activeBtn.getAttribute('data-period') : '7d';
+            loadEquityData(period);
+        }, 30000);
     });
 </script>
 {% endblock %}

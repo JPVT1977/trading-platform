@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import timezone
+from zoneinfo import ZoneInfo
+
 import aiohttp_jinja2
 from aiohttp import web
 
 from bot.dashboard import queries as dq
+
+MELB_TZ = ZoneInfo("Australia/Melbourne")
 
 PERIOD_MAP = {
     "7d": "7 days",
@@ -40,7 +45,10 @@ class EquityViews:
         labels = []
         values = []
         for row in rows:
-            labels.append(row["time"].strftime("%b %d %H:%M"))
+            t = row["time"]
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            labels.append(t.astimezone(MELB_TZ).strftime("%b %d %H:%M"))
             values.append(float(row["total_equity"]))
 
         return web.json_response({

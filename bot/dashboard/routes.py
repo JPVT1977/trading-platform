@@ -52,6 +52,7 @@ def setup_routes(
     app.router.add_get("/api/overview", overview.overview_partial)
     app.router.add_get("/api/signals", signals.signals_partial)
     app.router.add_get("/api/positions", positions.positions_partial)
+    app.router.add_get("/api/risk", risk.risk_partial)
     app.router.add_get("/api/equity", equity.equity_api)
 
     # Root redirect

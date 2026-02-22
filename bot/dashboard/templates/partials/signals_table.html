@@ -18,7 +18,7 @@
         <tbody>
             {% for s in signals %}
             <tr class="expand-trigger" onclick="toggleExpand('{{ s.id }}')">
-                <td class="mono text-sm">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td class="mono text-sm">{{ (s.created_at|to_melb).strftime('%Y-%m-%d %H:%M') }}</td>
                 <td><strong>{{ s.symbol }}</strong></td>
                 <td class="text-muted">{{ s.timeframe }}</td>
                 <td class="text-sm">{{ s.divergence_type }}</td>

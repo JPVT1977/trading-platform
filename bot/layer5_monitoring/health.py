@@ -3,11 +3,23 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
 import jinja2
 from aiohttp import web
 from loguru import logger
+
+MELB_TZ = ZoneInfo("Australia/Melbourne")
+
+
+def _to_melb(dt):
+    """Convert a datetime to Australia/Melbourne time."""
+    if dt is None:
+        return dt
+    if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(MELB_TZ)
 
 from bot.dashboard.middleware import auth_middleware
 from bot.dashboard.routes import setup_routes
@@ -49,6 +61,10 @@ class HealthServer:
             context_processors=[self._global_context],
         )
 
+        # Register custom Jinja2 filters
+        env = aiohttp_jinja2.get_env(self._app)
+        env.filters["to_melb"] = _to_melb
+
         # Static files
         static_dir = Path(__file__).parent.parent / "dashboard" / "static"
         self._app.router.add_static("/static/", path=str(static_dir), name="static")
@@ -61,7 +77,7 @@ class HealthServer:
 
     async def _global_context(self, request: web.Request) -> dict:
         """Jinja2 context processor — injects `now` into all templates."""
-        return {"now": datetime.now(timezone.utc)}
+        return {"now": datetime.now(MELB_TZ)}
 
     async def _health_check(self, request: web.Request) -> web.Response:
         """Shallow health check — is the process alive?"""

@@ -16,7 +16,10 @@
         <a href="/dashboard/signals?filter=rejected" class="filter-pill {{ 'active' if filter == 'rejected' else '' }}">Rejected</a>
     </div>
 
-    <div id="signals-content">
+    <div id="signals-content"
+         hx-get="/api/signals?filter={{ filter }}"
+         hx-trigger="every 30s"
+         hx-swap="innerHTML">
         {% include "partials/signals_table.html" %}
     </div>
 </div>

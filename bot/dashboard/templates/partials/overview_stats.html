@@ -46,7 +46,7 @@
                 <tbody>
                     {% for s in signals %}
                     <tr>
-                        <td class="mono text-sm">{{ s.created_at.strftime('%H:%M:%S') }}</td>
+                        <td class="mono text-sm">{{ (s.created_at|to_melb).strftime('%H:%M:%S') }}</td>
                         <td>{{ s.symbol }}</td>
                         <td>
                             {% if s.direction %}
@@ -90,7 +90,7 @@
                 <tbody>
                     {% for c in cycles %}
                     <tr>
-                        <td class="mono text-sm">{{ c.started_at.strftime('%H:%M:%S') }}</td>
+                        <td class="mono text-sm">{{ (c.started_at|to_melb).strftime('%H:%M:%S') }}</td>
                         <td class="mono">{{ c.duration_ms or 0 }}ms</td>
                         <td class="mono">{{ c.signals_found }}</td>
                         <td class="mono">{{ c.signals_validated }}</td>

@@ -15,10 +15,8 @@ class RiskViews:
         self._settings = settings
         self._risk_manager = risk_manager
 
-    @aiohttp_jinja2.template("risk.html")
-    async def risk_page(self, request: web.Request) -> dict:
-        """GET /dashboard/risk — risk management status."""
-        # Current usage
+    async def _get_risk_data(self, request: web.Request) -> dict:
+        """Shared data fetching for full page and HTMX partial."""
         stats_row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
@@ -38,15 +36,13 @@ class RiskViews:
         # Circuit breaker history
         cb_events = await self._pool.fetch(dq.GET_CIRCUIT_BREAKER_EVENTS)
 
-        # Correlation exposure — count same-direction open positions
+        # Correlation exposure
         open_rows = await self._pool.fetch(dq.GET_OPEN_POSITIONS)
         long_count = sum(1 for r in open_rows if r["direction"] == "long")
         short_count = sum(1 for r in open_rows if r["direction"] == "short")
         correlation_count = max(long_count, short_count)
 
         return {
-            "active_page": "risk",
-            "user": request["user"],
             "limits": {
                 "daily_loss": {
                     "current": daily_loss_pct,
@@ -75,3 +71,18 @@ class RiskViews:
             },
             "cb_events": cb_events,
         }
+
+    @aiohttp_jinja2.template("risk.html")
+    async def risk_page(self, request: web.Request) -> dict:
+        """GET /dashboard/risk — risk management status."""
+        data = await self._get_risk_data(request)
+        data["active_page"] = "risk"
+        data["user"] = request["user"]
+        return data
+
+    async def risk_partial(self, request: web.Request) -> web.Response:
+        """GET /api/risk — HTMX partial for live refresh."""
+        context = await self._get_risk_data(request)
+        return aiohttp_jinja2.render_template(
+            "partials/risk_stats.html", request, context
+        )
