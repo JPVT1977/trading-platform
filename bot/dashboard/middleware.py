@@ -9,6 +9,7 @@ from bot.dashboard import queries as dq
 # Paths that don't require authentication
 PUBLIC_PATHS = frozenset({
     "/login",
+    "/reset-password",
     "/health",
     "/health/deep",
 })
