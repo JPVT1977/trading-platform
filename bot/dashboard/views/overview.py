@@ -55,17 +55,20 @@ class OverviewViews:
         row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
-        total_equity = float(equity_row["total_equity"]) if equity_row else 5000.0
+        snapshot_equity = float(equity_row["total_equity"]) if equity_row else 5000.0
         realized_pnl = float(row["daily_pnl"]) if row else 0.0
 
         # Calculate unrealized P&L from open positions using live prices
         unrealized_pnl = await self._get_unrealized_pnl()
 
+        # Live equity = snapshot (realized only) + current unrealized
+        live_equity = snapshot_equity + unrealized_pnl
+
         total_pnl = realized_pnl + unrealized_pnl
-        total_pnl_pct = (total_pnl / total_equity * 100) if total_equity > 0 else 0.0
+        total_pnl_pct = (total_pnl / snapshot_equity * 100) if snapshot_equity > 0 else 0.0
 
         return {
-            "total_equity": total_equity,
+            "total_equity": live_equity,
             "daily_pnl": total_pnl,
             "daily_pnl_pct": total_pnl_pct,
             "realized_pnl": realized_pnl,

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import aiohttp_jinja2
 from aiohttp import web
 from loguru import logger
 
 from bot.dashboard import queries as dq
+
+MELB_TZ = ZoneInfo("Australia/Melbourne")
 
 PAGE_SIZE = 25
 
@@ -45,7 +50,7 @@ class PositionsViews:
                     pnl = (entry - current_price) * qty
                 row["current_price"] = current_price
                 row["unrealized_pnl"] = pnl
-                row["pnl_pct"] = (current_price - entry) / entry * 100 if p["direction"] == "long" else (entry - current_price) / entry * 100
+                row["pnl_pct"] = ((current_price - entry) / entry * 100 if p["direction"] == "long" else (entry - current_price) / entry * 100) if entry > 0 else 0.0
             else:
                 row["current_price"] = None
                 row["unrealized_pnl"] = None
@@ -107,6 +112,7 @@ class PositionsViews:
             "closed_page": page,
             "closed_total_pages": closed_pages,
             "closed_total": closed_total,
+            "now": datetime.now(MELB_TZ),
         }
         return aiohttp_jinja2.render_template(
             "partials/positions_table.html", request, context
