@@ -71,7 +71,7 @@ def validate_signal(
         if risk == 0:
             return ValidationResult(passed=False, reason="Zero risk distance (entry == stop_loss)")
         rr_ratio = reward / risk
-        if rr_ratio < settings.min_risk_reward:
+        if rr_ratio < settings.min_risk_reward - 0.01:
             return ValidationResult(
                 passed=False,
                 reason=f"R:R ratio {rr_ratio:.2f} below {settings.min_risk_reward} minimum",

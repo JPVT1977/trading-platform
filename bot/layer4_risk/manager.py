@@ -154,10 +154,10 @@ class RiskManager:
         daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
 
         # TODO: Fetch actual balance from exchange in live mode
-        # For now, use a placeholder that should be set from exchange balance
+        # Paper trading starting balance
         return PortfolioState(
-            total_equity=10000.0,  # Will be fetched from exchange
-            available_balance=10000.0,
+            total_equity=5000.0,
+            available_balance=5000.0,
             open_positions=open_positions,
             daily_pnl=daily_pnl,
             daily_trades=daily_trades,
