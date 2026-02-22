@@ -184,3 +184,149 @@ GET_EQUITY_CURVE_ALL = """
     FROM portfolio_snapshots
     ORDER BY time ASC
 """
+
+# ---------------------------------------------------------------------------
+# Heartbeat
+# ---------------------------------------------------------------------------
+
+GET_LAST_CYCLE = """
+    SELECT started_at, completed_at, symbols_analyzed, signals_found, duration_ms
+    FROM analysis_cycles
+    ORDER BY started_at DESC
+    LIMIT 1
+"""
+
+# ---------------------------------------------------------------------------
+# Performance (Signal Outcomes)
+# ---------------------------------------------------------------------------
+
+GET_PERFORMANCE_HERO = """
+    SELECT
+        COUNT(*) FILTER (WHERE verdict = 'correct')   AS correct,
+        COUNT(*) FILTER (WHERE verdict = 'incorrect')  AS incorrect,
+        COUNT(*) FILTER (WHERE verdict = 'partial')    AS partial,
+        COUNT(*) FILTER (WHERE verdict = 'pending')    AS pending,
+        COUNT(*) FILTER (WHERE verdict IS NOT NULL)    AS total,
+        COUNT(*) FILTER (WHERE tp1_hit)                AS tp1_hits,
+        COUNT(*) FILTER (WHERE fully_resolved)         AS resolved
+    FROM signal_outcomes
+"""
+
+GET_PERFORMANCE_RETURNS = """
+    SELECT
+        AVG(return_1h)  FILTER (WHERE return_1h IS NOT NULL)   AS avg_return_1h,
+        AVG(return_4h)  FILTER (WHERE return_4h IS NOT NULL)   AS avg_return_4h,
+        AVG(return_12h) FILTER (WHERE return_12h IS NOT NULL)  AS avg_return_12h,
+        AVG(return_24h) FILTER (WHERE return_24h IS NOT NULL)  AS avg_return_24h,
+        AVG(max_favorable_pct) FILTER (WHERE max_favorable_pct IS NOT NULL) AS avg_mfe,
+        AVG(max_adverse_pct)   FILTER (WHERE max_adverse_pct IS NOT NULL)   AS avg_mae
+    FROM signal_outcomes
+"""
+
+GET_PERFORMANCE_DAILY_ACCURACY = """
+    SELECT
+        DATE(s.created_at) AS day,
+        COUNT(*) FILTER (WHERE so.verdict = 'correct') AS correct,
+        COUNT(*) FILTER (WHERE so.verdict IN ('correct','incorrect','partial')) AS resolved
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE so.fully_resolved = TRUE
+    GROUP BY DATE(s.created_at)
+    ORDER BY day ASC
+"""
+
+GET_PERFORMANCE_BY_SYMBOL = """
+    SELECT
+        s.symbol,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE so.verdict = 'correct')  AS correct,
+        COUNT(*) FILTER (WHERE so.verdict = 'incorrect') AS incorrect,
+        AVG(so.return_24h) FILTER (WHERE so.return_24h IS NOT NULL) AS avg_return
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE so.fully_resolved = TRUE
+    GROUP BY s.symbol
+    ORDER BY total DESC
+"""
+
+GET_PERFORMANCE_BY_TIMEFRAME = """
+    SELECT
+        s.timeframe,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE so.verdict = 'correct')  AS correct,
+        COUNT(*) FILTER (WHERE so.verdict = 'incorrect') AS incorrect,
+        AVG(so.return_24h) FILTER (WHERE so.return_24h IS NOT NULL) AS avg_return
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE so.fully_resolved = TRUE
+    GROUP BY s.timeframe
+    ORDER BY total DESC
+"""
+
+GET_PERFORMANCE_BY_DIVERGENCE = """
+    SELECT
+        s.divergence_type,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE so.verdict = 'correct')  AS correct,
+        COUNT(*) FILTER (WHERE so.verdict = 'incorrect') AS incorrect,
+        AVG(so.return_24h) FILTER (WHERE so.return_24h IS NOT NULL) AS avg_return
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE so.fully_resolved = TRUE
+    GROUP BY s.divergence_type
+    ORDER BY total DESC
+"""
+
+GET_PERFORMANCE_VALIDATED_VS_REJECTED = """
+    SELECT
+        s.validated,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE so.verdict = 'correct')  AS correct,
+        COUNT(*) FILTER (WHERE so.verdict = 'incorrect') AS incorrect,
+        AVG(so.return_24h) FILTER (WHERE so.return_24h IS NOT NULL) AS avg_return
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE so.fully_resolved = TRUE
+    GROUP BY s.validated
+    ORDER BY s.validated DESC
+"""
+
+GET_MISSED_OPPORTUNITIES = """
+    SELECT s.id, s.symbol, s.timeframe, s.divergence_type, s.direction,
+           s.entry_price, s.validation_reason, s.created_at,
+           so.return_24h, so.max_favorable_pct, so.verdict,
+           so.tp1_hit, so.tp2_hit
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE s.validated = FALSE
+      AND so.fully_resolved = TRUE
+      AND (so.verdict = 'correct' OR so.max_favorable_pct > 1.0)
+    ORDER BY so.max_favorable_pct DESC NULLS LAST
+    LIMIT 20
+"""
+
+GET_BAD_SIGNALS = """
+    SELECT s.id, s.symbol, s.timeframe, s.divergence_type, s.direction,
+           s.entry_price, s.reasoning, s.created_at,
+           so.return_24h, so.max_adverse_pct, so.verdict,
+           so.sl_hit, so.sl_hit_at
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE s.validated = TRUE
+      AND so.verdict = 'incorrect'
+    ORDER BY so.max_adverse_pct ASC NULLS LAST
+    LIMIT 20
+"""
+
+GET_PERFORMANCE_TABLE = """
+    SELECT s.id, s.symbol, s.timeframe, s.divergence_type, s.direction,
+           s.entry_price, s.validated, s.created_at,
+           so.return_1h, so.return_4h, so.return_12h, so.return_24h,
+           so.max_favorable_pct, so.max_adverse_pct,
+           so.tp1_hit, so.tp2_hit, so.tp3_hit, so.sl_hit,
+           so.verdict, so.fully_resolved
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    ORDER BY s.created_at DESC
+    LIMIT 100
+"""

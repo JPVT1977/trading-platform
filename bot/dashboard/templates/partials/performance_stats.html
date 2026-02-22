@@ -1,0 +1,375 @@
+<!-- Hero Stats -->
+<div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+    <div class="stat-card">
+        <div class="stat-label">Bot Accuracy</div>
+        <div class="stat-value {{ 'positive' if hero.accuracy >= 60 else ('negative' if hero.accuracy < 40 else 'neutral') }}">
+            {{ "%.1f" | format(hero.accuracy) }}%
+        </div>
+        <div class="stat-change text-muted">{{ hero.correct + hero.incorrect + hero.partial }} resolved</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Correct</div>
+        <div class="stat-value positive">{{ hero.correct }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Incorrect</div>
+        <div class="stat-value negative">{{ hero.incorrect }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">TP1 Hit Rate</div>
+        <div class="stat-value neutral">{{ "%.1f" | format(hero.tp1_rate) }}%</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value text-muted">{{ hero.pending }}</div>
+    </div>
+</div>
+
+<!-- Average Returns -->
+<div class="stats-grid" style="grid-template-columns: repeat(6, 1fr);">
+    {% for label, val in [('1h', returns.avg_1h), ('4h', returns.avg_4h), ('12h', returns.avg_12h), ('24h', returns.avg_24h)] %}
+    <div class="stat-card">
+        <div class="stat-label">Avg Return {{ label }}</div>
+        {% if val is not none %}
+        <div class="stat-value {{ 'positive' if val >= 0 else 'negative' }}" style="font-size:18px;">
+            {{ "+" if val >= 0 else "" }}{{ "%.2f" | format(val) }}%
+        </div>
+        {% else %}
+        <div class="stat-value text-muted" style="font-size:18px;">--</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    <div class="stat-card">
+        <div class="stat-label">Avg MFE</div>
+        {% if returns.avg_mfe is not none %}
+        <div class="stat-value positive" style="font-size:18px;">+{{ "%.2f" | format(returns.avg_mfe) }}%</div>
+        {% else %}
+        <div class="stat-value text-muted" style="font-size:18px;">--</div>
+        {% endif %}
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Avg MAE</div>
+        {% if returns.avg_mae is not none %}
+        <div class="stat-value negative" style="font-size:18px;">{{ "%.2f" | format(returns.avg_mae) }}%</div>
+        {% else %}
+        <div class="stat-value text-muted" style="font-size:18px;">--</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Accuracy Over Time Chart -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Accuracy Over Time</h2>
+        <span class="spinner htmx-indicator" id="perf-loading"></span>
+    </div>
+    <div class="chart-container" style="height:300px;">
+        <canvas id="accuracyChart"></canvas>
+    </div>
+</div>
+
+<!-- Breakdown Tabs -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Breakdowns</h2>
+    </div>
+    <div class="tabs">
+        <button class="tab perf-tab active" data-perf-tab="symbol" onclick="switchPerfTab('symbol')">By Symbol</button>
+        <button class="tab perf-tab" data-perf-tab="timeframe" onclick="switchPerfTab('timeframe')">By Timeframe</button>
+        <button class="tab perf-tab" data-perf-tab="divergence" onclick="switchPerfTab('divergence')">By Divergence</button>
+        <button class="tab perf-tab" data-perf-tab="validation" onclick="switchPerfTab('validation')">Validated vs Rejected</button>
+    </div>
+
+    <!-- By Symbol -->
+    <div id="perf-symbol" class="perf-tab-content">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Symbol</th><th>Total</th><th>Win Rate</th><th>Avg 24h Return</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for row in by_symbol %}
+                    {% set wr = (row.correct / row.total * 100) if row.total > 0 else 0 %}
+                    <tr>
+                        <td>{{ row.symbol }}</td>
+                        <td class="mono">{{ row.total }}</td>
+                        <td style="min-width:180px;">
+                            <div class="progress-bar" style="height:6px;margin-bottom:2px;">
+                                <div class="progress-fill {{ 'green' if wr >= 60 else ('yellow' if wr >= 40 else 'red') }}" style="width:{{ wr }}%"></div>
+                            </div>
+                            <span class="mono text-sm">{{ "%.0f" | format(wr) }}%</span>
+                        </td>
+                        <td class="mono {{ 'text-success' if row.avg_return and row.avg_return >= 0 else 'text-danger' }}">
+                            {% if row.avg_return is not none %}{{ "%.2f" | format(row.avg_return) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="mono text-sm text-muted">{{ row.correct }}W / {{ row.incorrect }}L</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No resolved signals yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- By Timeframe -->
+    <div id="perf-timeframe" class="perf-tab-content" style="display:none;">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Timeframe</th><th>Total</th><th>Win Rate</th><th>Avg 24h Return</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for row in by_timeframe %}
+                    {% set wr = (row.correct / row.total * 100) if row.total > 0 else 0 %}
+                    <tr>
+                        <td>{{ row.timeframe }}</td>
+                        <td class="mono">{{ row.total }}</td>
+                        <td style="min-width:180px;">
+                            <div class="progress-bar" style="height:6px;margin-bottom:2px;">
+                                <div class="progress-fill {{ 'green' if wr >= 60 else ('yellow' if wr >= 40 else 'red') }}" style="width:{{ wr }}%"></div>
+                            </div>
+                            <span class="mono text-sm">{{ "%.0f" | format(wr) }}%</span>
+                        </td>
+                        <td class="mono {{ 'text-success' if row.avg_return and row.avg_return >= 0 else 'text-danger' }}">
+                            {% if row.avg_return is not none %}{{ "%.2f" | format(row.avg_return) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="mono text-sm text-muted">{{ row.correct }}W / {{ row.incorrect }}L</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No resolved signals yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- By Divergence Type -->
+    <div id="perf-divergence" class="perf-tab-content" style="display:none;">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Divergence Type</th><th>Total</th><th>Win Rate</th><th>Avg 24h Return</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for row in by_divergence %}
+                    {% set wr = (row.correct / row.total * 100) if row.total > 0 else 0 %}
+                    <tr>
+                        <td>{{ row.divergence_type }}</td>
+                        <td class="mono">{{ row.total }}</td>
+                        <td style="min-width:180px;">
+                            <div class="progress-bar" style="height:6px;margin-bottom:2px;">
+                                <div class="progress-fill {{ 'green' if wr >= 60 else ('yellow' if wr >= 40 else 'red') }}" style="width:{{ wr }}%"></div>
+                            </div>
+                            <span class="mono text-sm">{{ "%.0f" | format(wr) }}%</span>
+                        </td>
+                        <td class="mono {{ 'text-success' if row.avg_return and row.avg_return >= 0 else 'text-danger' }}">
+                            {% if row.avg_return is not none %}{{ "%.2f" | format(row.avg_return) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="mono text-sm text-muted">{{ row.correct }}W / {{ row.incorrect }}L</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No resolved signals yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Validated vs Rejected -->
+    <div id="perf-validation" class="perf-tab-content" style="display:none;">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Status</th><th>Total</th><th>Win Rate</th><th>Avg 24h Return</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for row in val_vs_rej %}
+                    {% set wr = (row.correct / row.total * 100) if row.total > 0 else 0 %}
+                    <tr>
+                        <td>
+                            {% if row.validated %}
+                            <span class="badge badge-success">Validated</span>
+                            {% else %}
+                            <span class="badge badge-danger">Rejected</span>
+                            {% endif %}
+                        </td>
+                        <td class="mono">{{ row.total }}</td>
+                        <td style="min-width:180px;">
+                            <div class="progress-bar" style="height:6px;margin-bottom:2px;">
+                                <div class="progress-fill {{ 'green' if wr >= 60 else ('yellow' if wr >= 40 else 'red') }}" style="width:{{ wr }}%"></div>
+                            </div>
+                            <span class="mono text-sm">{{ "%.0f" | format(wr) }}%</span>
+                        </td>
+                        <td class="mono {{ 'text-success' if row.avg_return and row.avg_return >= 0 else 'text-danger' }}">
+                            {% if row.avg_return is not none %}{{ "%.2f" | format(row.avg_return) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="mono text-sm text-muted">{{ row.correct }}W / {{ row.incorrect }}L</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No resolved signals yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Two-Column: Missed Opportunities + Bad Signals -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+
+    <!-- Missed Opportunities -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Missed Opportunities</h2>
+            <span class="badge badge-warning">Rejected but profitable</span>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Time</th><th>Symbol</th><th>Dir</th><th>MFE</th><th>24h</th><th>Reason</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in missed %}
+                    <tr>
+                        <td class="mono text-sm">{{ (s.created_at|to_melb).strftime('%b %d %H:%M') }}</td>
+                        <td>{{ s.symbol }}</td>
+                        <td><span class="badge badge-{{ s.direction }}">{{ s.direction }}</span></td>
+                        <td class="mono text-success">
+                            {% if s.max_favorable_pct is not none %}+{{ "%.2f" | format(s.max_favorable_pct) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="mono {{ 'text-success' if s.return_24h and s.return_24h >= 0 else 'text-danger' }}">
+                            {% if s.return_24h is not none %}{{ "%.2f" | format(s.return_24h) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="text-sm text-muted" style="white-space:normal;max-width:160px;">{{ s.validation_reason[:50] }}{% if s.validation_reason|length > 50 %}...{% endif %}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted text-sm" style="text-align:center;padding:32px;">No missed opportunities yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Bad Signals -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Bad Signals</h2>
+            <span class="badge badge-danger">Validated but lost money</span>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Time</th><th>Symbol</th><th>Dir</th><th>MAE</th><th>24h</th><th>SL Hit</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in bad %}
+                    <tr>
+                        <td class="mono text-sm">{{ (s.created_at|to_melb).strftime('%b %d %H:%M') }}</td>
+                        <td>{{ s.symbol }}</td>
+                        <td><span class="badge badge-{{ s.direction }}">{{ s.direction }}</span></td>
+                        <td class="mono text-danger">
+                            {% if s.max_adverse_pct is not none %}{{ "%.2f" | format(s.max_adverse_pct) }}%{% else %}--{% endif %}
+                        </td>
+                        <td class="mono text-danger">
+                            {% if s.return_24h is not none %}{{ "%.2f" | format(s.return_24h) }}%{% else %}--{% endif %}
+                        </td>
+                        <td>
+                            {% if s.sl_hit %}
+                            <span class="badge badge-danger">HIT</span>
+                            {% else %}
+                            <span class="text-muted">--</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted text-sm" style="text-align:center;padding:32px;">No bad signals yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Full Signal Table -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">All Signal Outcomes</h2>
+        <span class="text-muted text-sm">Last 100 signals</span>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Symbol</th>
+                    <th>Dir</th>
+                    <th>1h</th>
+                    <th>4h</th>
+                    <th>12h</th>
+                    <th>24h</th>
+                    <th>MFE</th>
+                    <th>MAE</th>
+                    <th>TP1</th>
+                    <th>SL</th>
+                    <th>Verdict</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in table %}
+                <tr>
+                    <td class="mono text-sm">{{ (s.created_at|to_melb).strftime('%b %d %H:%M') }}</td>
+                    <td>
+                        {{ s.symbol }}
+                        {% if not s.validated %}<span class="text-muted text-sm">(rej)</span>{% endif %}
+                    </td>
+                    <td><span class="badge badge-{{ s.direction }}">{{ s.direction }}</span></td>
+
+                    <!-- Returns -->
+                    {% for ret in [s.return_1h, s.return_4h, s.return_12h, s.return_24h] %}
+                    <td class="mono text-sm {{ 'text-success' if ret and ret >= 0 else ('text-danger' if ret and ret < 0 else 'text-muted') }}">
+                        {% if ret is not none %}{{ "+" if ret >= 0 else "" }}{{ "%.2f" | format(ret) }}%{% else %}--{% endif %}
+                    </td>
+                    {% endfor %}
+
+                    <!-- MFE -->
+                    <td class="mono text-sm text-success">
+                        {% if s.max_favorable_pct is not none %}+{{ "%.2f" | format(s.max_favorable_pct) }}%{% else %}--{% endif %}
+                    </td>
+
+                    <!-- MAE -->
+                    <td class="mono text-sm text-danger">
+                        {% if s.max_adverse_pct is not none %}{{ "%.2f" | format(s.max_adverse_pct) }}%{% else %}--{% endif %}
+                    </td>
+
+                    <!-- TP1 Hit -->
+                    <td>
+                        {% if s.tp1_hit %}<span class="badge badge-success">HIT</span>{% else %}<span class="text-muted">--</span>{% endif %}
+                    </td>
+
+                    <!-- SL Hit -->
+                    <td>
+                        {% if s.sl_hit %}<span class="badge badge-danger">HIT</span>{% else %}<span class="text-muted">--</span>{% endif %}
+                    </td>
+
+                    <!-- Verdict -->
+                    <td>
+                        {% if s.verdict == 'correct' %}
+                        <span class="badge verdict-correct">CORRECT</span>
+                        {% elif s.verdict == 'incorrect' %}
+                        <span class="badge verdict-incorrect">INCORRECT</span>
+                        {% elif s.verdict == 'partial' %}
+                        <span class="badge verdict-partial">PARTIAL</span>
+                        {% else %}
+                        <span class="badge verdict-pending">PENDING</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="12" class="text-muted text-sm" style="text-align:center;padding:32px;">No signal outcomes yet — waiting for background tracker</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

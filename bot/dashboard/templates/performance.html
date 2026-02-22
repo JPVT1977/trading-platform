@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Performance{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Signal Performance</h1>
+    <p class="page-subtitle">Track every signal's outcome — predicted vs actual</p>
+</div>
+
+<div id="performance-content"
+     hx-get="/api/performance"
+     hx-trigger="every 60s"
+     hx-indicator="#perf-loading"
+     hx-swap="innerHTML">
+    {% include "partials/performance_stats.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let accuracyChart = null;
+
+    function initAccuracyChart() {
+        const ctx = document.getElementById('accuracyChart');
+        if (!ctx) return;
+        if (accuracyChart) { accuracyChart.destroy(); }
+        accuracyChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [{
+                label: 'Accuracy %',
+                data: [],
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4,
+                pointBackgroundColor: '#3b82f6',
+            }]},
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) { return ctx.parsed.y.toFixed(1) + '%'; }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 0, max: 100,
+                        ticks: { callback: v => v + '%', color: '#94a3b8' },
+                        grid: { color: 'rgba(148,163,184,0.08)' },
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8', maxRotation: 45 },
+                        grid: { display: false },
+                    }
+                }
+            }
+        });
+        loadAccuracyData();
+    }
+
+    function loadAccuracyData() {
+        fetch('/api/performance/chart')
+            .then(r => r.json())
+            .then(data => {
+                if (accuracyChart) {
+                    accuracyChart.data.labels = data.labels;
+                    accuracyChart.data.datasets[0].data = data.values;
+                    accuracyChart.update();
+                }
+            });
+    }
+
+    function switchPerfTab(tabName) {
+        document.querySelectorAll('.perf-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.perf-tab-content').forEach(c => c.style.display = 'none');
+        document.querySelector('[data-perf-tab="' + tabName + '"]').classList.add('active');
+        document.getElementById('perf-' + tabName).style.display = 'block';
+    }
+
+    document.addEventListener('DOMContentLoaded', initAccuracyChart);
+    document.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target.id === 'performance-content') { initAccuracyChart(); }
+    });
+</script>
+{% endblock %}

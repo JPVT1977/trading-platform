@@ -157,3 +157,47 @@ INSERT_ANALYSIS_CYCLE = """
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING id
 """
+
+# ---------------------------------------------------------------------------
+# Signal Outcomes
+# ---------------------------------------------------------------------------
+
+SELECT_SIGNALS_WITHOUT_OUTCOMES = """
+    SELECT s.id, s.symbol, s.direction, s.entry_price, s.stop_loss,
+           s.take_profit_1, s.take_profit_2, s.take_profit_3, s.created_at
+    FROM signals s
+    LEFT JOIN signal_outcomes so ON s.id = so.signal_id
+    WHERE so.id IS NULL
+      AND s.entry_price IS NOT NULL
+      AND s.direction IS NOT NULL
+"""
+
+INSERT_OUTCOME = """
+    INSERT INTO signal_outcomes (signal_id, entry_price, direction, verdict)
+    VALUES ($1, $2, $3, 'pending')
+    ON CONFLICT (signal_id) DO NOTHING
+"""
+
+SELECT_UNRESOLVED_OUTCOMES = """
+    SELECT so.*, s.symbol, s.stop_loss, s.take_profit_1, s.take_profit_2,
+           s.take_profit_3, s.created_at AS signal_created_at
+    FROM signal_outcomes so
+    JOIN signals s ON so.signal_id = s.id
+    WHERE so.fully_resolved = FALSE
+    ORDER BY s.symbol, s.created_at
+"""
+
+UPDATE_OUTCOME = """
+    UPDATE signal_outcomes SET
+        price_1h = $2, price_4h = $3, price_12h = $4, price_24h = $5,
+        return_1h = $6, return_4h = $7, return_12h = $8, return_24h = $9,
+        max_favorable_price = $10, max_adverse_price = $11,
+        max_favorable_pct = $12, max_adverse_pct = $13,
+        tp1_hit = $14, tp1_hit_at = $15,
+        tp2_hit = $16, tp2_hit_at = $17,
+        tp3_hit = $18, tp3_hit_at = $19,
+        sl_hit = $20, sl_hit_at = $21,
+        verdict = $22, fully_resolved = $23,
+        last_checked_at = NOW()
+    WHERE id = $1
+"""

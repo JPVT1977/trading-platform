@@ -89,6 +89,7 @@
                     <tr>
                         <th>Time</th>
                         <th>Duration</th>
+                        <th>Checked</th>
                         <th>Found</th>
                         <th>Valid</th>
                         <th>Orders</th>
@@ -96,15 +97,47 @@
                 </thead>
                 <tbody>
                     {% for c in cycles %}
-                    <tr>
+                    {% set symbols_data = c.errors.get('symbols', {}) if c.errors and c.errors is mapping else {} %}
+                    <tr class="expand-trigger" onclick="toggleExpand('cycle-{{ loop.index }}')">
                         <td class="mono text-sm">{{ (c.started_at|to_melb).strftime('%H:%M:%S') }}</td>
                         <td class="mono">{{ c.duration_ms or 0 }}ms</td>
+                        <td class="mono">{{ c.symbols_analyzed|length }}</td>
                         <td class="mono">{{ c.signals_found }}</td>
                         <td class="mono">{{ c.signals_validated }}</td>
                         <td class="mono">{{ c.orders_placed }}</td>
                     </tr>
+                    {% if symbols_data %}
+                    <tr class="expand-content" id="cycle-{{ loop.index }}">
+                        <td colspan="6">
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 24px;">
+                                {% for sym, status in symbols_data.items() %}
+                                <div style="display:flex; justify-content:space-between; padding:2px 0;">
+                                    <span class="mono text-sm">{{ sym }}</span>
+                                    {% if status == 'order_placed' %}
+                                    <span class="badge badge-success" style="font-size:10px;">ORDER</span>
+                                    {% elif status == 'no_divergence' %}
+                                    <span class="text-muted text-sm">no divergence</span>
+                                    {% elif status == 'no_new_candle' %}
+                                    <span class="text-dim text-sm" style="color:var(--text-dim);">no new candle</span>
+                                    {% elif 'signal_rejected' in status %}
+                                    <span class="badge badge-warning" style="font-size:10px;">REJECTED</span>
+                                    {% elif 'signal_validated' in status %}
+                                    <span class="badge badge-info" style="font-size:10px;">VALIDATED</span>
+                                    {% elif 'insufficient' in status %}
+                                    <span class="badge badge-muted" style="font-size:10px;">LOW DATA</span>
+                                    {% elif 'error' in status %}
+                                    <span class="badge badge-danger" style="font-size:10px;">ERROR</span>
+                                    {% else %}
+                                    <span class="text-muted text-sm">{{ status }}</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
                     {% else %}
-                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No cycles yet</td></tr>
+                    <tr><td colspan="6" class="text-muted text-sm" style="text-align:center;padding:32px;">No cycles yet</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

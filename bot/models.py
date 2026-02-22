@@ -161,3 +161,5 @@ class AnalysisCycleResult(BaseModel):
     orders_placed: int = 0
     errors: list[str] = Field(default_factory=list)
     duration_ms: Optional[int] = None
+    # Per-symbol detail: {"BTC/USDT:USDT/1h": "no_divergence", ...}
+    symbol_details: dict[str, str] = Field(default_factory=dict)

@@ -177,3 +177,52 @@ CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_time
 
 CREATE INDEX IF NOT EXISTS idx_circuit_breaker_time
     ON circuit_breaker_events (triggered_at DESC);
+
+-- ===================================================================
+-- Signal Performance Outcomes
+-- ===================================================================
+
+CREATE TABLE IF NOT EXISTS signal_outcomes (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    signal_id           UUID NOT NULL UNIQUE REFERENCES signals(id),
+    entry_price         DOUBLE PRECISION NOT NULL,
+    direction           TEXT NOT NULL,
+    -- Checkpoint prices (NULL until time elapsed)
+    price_1h            DOUBLE PRECISION,
+    price_4h            DOUBLE PRECISION,
+    price_12h           DOUBLE PRECISION,
+    price_24h           DOUBLE PRECISION,
+    -- Returns (positive = signal was correct)
+    return_1h           DOUBLE PRECISION,
+    return_4h           DOUBLE PRECISION,
+    return_12h          DOUBLE PRECISION,
+    return_24h          DOUBLE PRECISION,
+    -- Max excursions
+    max_favorable_price DOUBLE PRECISION,
+    max_adverse_price   DOUBLE PRECISION,
+    max_favorable_pct   DOUBLE PRECISION,
+    max_adverse_pct     DOUBLE PRECISION,
+    -- TP/SL hit tracking
+    tp1_hit             BOOLEAN DEFAULT FALSE,
+    tp1_hit_at          TIMESTAMPTZ,
+    tp2_hit             BOOLEAN DEFAULT FALSE,
+    tp2_hit_at          TIMESTAMPTZ,
+    tp3_hit             BOOLEAN DEFAULT FALSE,
+    tp3_hit_at          TIMESTAMPTZ,
+    sl_hit              BOOLEAN DEFAULT FALSE,
+    sl_hit_at           TIMESTAMPTZ,
+    -- Verdict
+    verdict             TEXT,  -- correct / incorrect / partial / pending
+    last_checked_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fully_resolved      BOOLEAN DEFAULT FALSE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_outcomes_unresolved
+    ON signal_outcomes (fully_resolved, last_checked_at) WHERE fully_resolved = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_signal_outcomes_verdict
+    ON signal_outcomes (verdict);
+
+CREATE INDEX IF NOT EXISTS idx_signal_outcomes_created
+    ON signal_outcomes (created_at DESC);

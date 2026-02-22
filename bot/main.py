@@ -31,6 +31,7 @@ from bot.layer3_execution.engine import ExecutionEngine
 from bot.layer4_risk.manager import RiskManager
 from bot.layer5_monitoring.health import HealthServer
 from bot.layer5_monitoring.logger import setup_logger
+from bot.layer5_monitoring.outcome_tracker import track_signal_outcomes
 from bot.layer5_monitoring.sms import SMSClient
 from bot.layer5_monitoring.telegram import TelegramClient
 from bot.models import AnalysisCycleResult
@@ -125,6 +126,7 @@ async def analysis_cycle(
 
     for symbol in settings.symbols:
         for timeframe in settings.timeframes:
+            candle_key = f"{symbol}/{timeframe}"
             try:
                 # --- Layer 1: Data Ingestion ---
                 candles = await market.fetch_ohlcv(symbol, timeframe)
@@ -133,16 +135,18 @@ async def analysis_cycle(
                         f"Insufficient candles for {symbol}/{timeframe}: "
                         f"{len(candles)} (need {settings.lookback_candles // 2}+)"
                     )
+                    result.symbols_analyzed.append(candle_key)
+                    result.symbol_details[candle_key] = f"insufficient_data ({len(candles)} candles)"
                     continue
 
                 indicators = compute_indicators(candles, symbol, timeframe, settings)
-                result.symbols_analyzed.append(f"{symbol}/{timeframe}")
+                result.symbols_analyzed.append(candle_key)
 
                 # Skip Claude API if candle data hasn't changed (saves cost + avoids dupes)
-                candle_key = f"{symbol}/{timeframe}"
                 latest_ts = candles[-1].timestamp.isoformat()
                 if _last_candle_times.get(candle_key) == latest_ts:
                     logger.debug(f"Skipping {candle_key}: no new candle since last cycle")
+                    result.symbol_details[candle_key] = "no_new_candle"
                     continue
                 _last_candle_times[candle_key] = latest_ts
 
@@ -153,6 +157,7 @@ async def analysis_cycle(
 
                 if not signal.divergence_detected:
                     logger.debug(f"No divergence: {symbol}/{timeframe}")
+                    result.symbol_details[candle_key] = "no_divergence"
                     continue
 
                 result.signals_found += 1
@@ -171,6 +176,7 @@ async def analysis_cycle(
 
                 if not validation.passed:
                     logger.info(f"Signal rejected: {validation.reason}")
+                    result.symbol_details[candle_key] = f"signal_rejected ({validation.reason})"
                     continue
 
                 result.signals_validated += 1
@@ -178,6 +184,7 @@ async def analysis_cycle(
                 # Skip if we already traded this symbol this cycle
                 if symbol in traded_symbols:
                     logger.info(f"Skipping {symbol}/{timeframe}: already traded {symbol} this cycle")
+                    result.symbol_details[candle_key] = "signal_validated (already traded this cycle)"
                     continue
 
                 # --- Layer 3 + 4: Execution (includes risk checks) ---
@@ -191,11 +198,15 @@ async def analysis_cycle(
 
                     # Send Telegram alert for the signal
                     await telegram.send_signal_alert(signal)
+                    result.symbol_details[candle_key] = "order_placed"
+                else:
+                    result.symbol_details[candle_key] = "signal_validated (execution declined)"
 
             except Exception as e:
                 error_msg = f"Error analysing {symbol}/{timeframe}: {e}"
                 logger.error(error_msg)
                 result.errors.append(error_msg)
+                result.symbol_details[candle_key] = f"error ({e})"
 
     # Finalise cycle result
     result.completed_at = datetime.now(timezone.utc)
@@ -212,6 +223,11 @@ async def analysis_cycle(
     # Persist cycle result
     try:
         from bot.database import queries
+        cycle_details = {}
+        if result.errors:
+            cycle_details["errors"] = result.errors
+        if result.symbol_details:
+            cycle_details["symbols"] = result.symbol_details
         await db.pool.execute(
             queries.INSERT_ANALYSIS_CYCLE,
             result.started_at,
@@ -220,7 +236,7 @@ async def analysis_cycle(
             result.signals_found,
             result.signals_validated,
             result.orders_placed,
-            json.dumps({"errors": result.errors}) if result.errors else None,
+            json.dumps(cycle_details) if cycle_details else None,
             result.duration_ms,
         )
     except Exception as e:
@@ -301,12 +317,27 @@ async def main() -> None:
         max_instances=1,
         misfire_grace_time=30,
     )
+    # Track signal outcomes every 5 minutes (fills checkpoint prices, TP/SL hits, verdicts)
+    scheduler.add_job(
+        track_signal_outcomes,
+        "interval",
+        minutes=5,
+        args=[db, market],
+        id="outcome_tracker",
+        name="Signal Outcome Tracker",
+        max_instances=1,
+        misfire_grace_time=60,
+    )
     scheduler.start()
-    logger.info(f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, SL/TP monitor: every 2min)")
+    logger.info(f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, SL/TP monitor: every 2min, outcomes: every 5min)")
 
     # Run first cycle immediately
     logger.info("Running initial analysis cycle...")
     await analysis_cycle(settings, market, claude, engine, risk, db, telegram)
+
+    # Run outcome tracker once on startup to catch up
+    logger.info("Running initial outcome tracker...")
+    await track_signal_outcomes(db, market)
 
     # Graceful shutdown handling
     stop_event = asyncio.Event()

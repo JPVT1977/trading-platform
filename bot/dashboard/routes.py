@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from aiohttp import web
 
+from bot.dashboard import queries as dq
 from bot.dashboard.views.auth import AuthViews
 from bot.dashboard.views.equity import EquityViews
 from bot.dashboard.views.overview import OverviewViews
+from bot.dashboard.views.performance import PerformanceViews
 from bot.dashboard.views.positions import PositionsViews
 from bot.dashboard.views.risk import RiskViews
 from bot.dashboard.views.settings_view import SettingsViews
@@ -35,6 +39,7 @@ def setup_routes(
     positions = PositionsViews(db_pool, market_client=market_client)
     risk = RiskViews(db_pool, settings, risk_manager)
     equity = EquityViews(db_pool)
+    performance = PerformanceViews(db_pool)
     settings_view = SettingsViews(settings)
 
     # Auth
@@ -49,6 +54,7 @@ def setup_routes(
     app.router.add_get("/dashboard/risk", risk.risk_page)
     app.router.add_get("/dashboard/equity", equity.equity_page)
     app.router.add_get("/dashboard/settings", settings_view.settings_page)
+    app.router.add_get("/dashboard/performance", performance.performance_page)
 
     # API endpoints (HTMX partials + JSON)
     app.router.add_get("/api/overview", overview.overview_partial)
@@ -56,9 +62,60 @@ def setup_routes(
     app.router.add_get("/api/positions", positions.positions_partial)
     app.router.add_get("/api/risk", risk.risk_partial)
     app.router.add_get("/api/equity", equity.equity_api)
+    app.router.add_get("/api/performance", performance.performance_partial)
+    app.router.add_get("/api/performance/chart", performance.performance_chart_api)
+    app.router.add_get("/api/heartbeat", _make_heartbeat_handler(db_pool))
 
     # Root redirect
     app.router.add_get("/", _redirect_to_dashboard)
+
+
+def _make_heartbeat_handler(db_pool):
+    """Create heartbeat endpoint — returns HTML snippet for sidebar."""
+    melb = ZoneInfo("Australia/Melbourne")
+
+    async def heartbeat(request: web.Request) -> web.Response:
+        row = await db_pool.fetchrow(dq.GET_LAST_CYCLE)
+        if not row:
+            html = (
+                '<span class="status-dot red"></span>'
+                '<span class="text-sm text-danger">No cycles</span>'
+            )
+            return web.Response(text=html, content_type="text/html")
+
+        completed = row["completed_at"]
+        if completed and completed.tzinfo is None:
+            completed = completed.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        ago_seconds = int((now - completed).total_seconds()) if completed else 9999
+        ago_minutes = ago_seconds // 60
+
+        if ago_minutes < 1:
+            ago_text = f"{ago_seconds}s ago"
+        elif ago_minutes < 60:
+            ago_text = f"{ago_minutes}m ago"
+        else:
+            ago_text = f"{ago_minutes // 60}h {ago_minutes % 60}m ago"
+
+        is_stale = ago_seconds > 300  # >5 min = stale
+        dot_class = "red" if is_stale else "green"
+        text_class = "text-danger" if is_stale else "text-success"
+
+        checked = row["symbols_analyzed"] or []
+        found = row["signals_found"] or 0
+
+        html = (
+            f'<span class="status-dot {dot_class}"></span>'
+            f'<span class="text-sm {text_class}">{ago_text}</span>'
+            f'<span class="text-sm text-muted" style="margin-left:4px;">'
+            f'{len(checked)} checked'
+            f'{", " + str(found) + " found" if found else ""}'
+            f'</span>'
+        )
+        return web.Response(text=html, content_type="text/html")
+
+    return heartbeat
 
 
 async def _redirect_to_dashboard(request: web.Request) -> web.Response:
