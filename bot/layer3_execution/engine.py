@@ -144,6 +144,119 @@ class ExecutionEngine:
 
         return order
 
+    async def monitor_open_positions(self) -> int:
+        """Check all open positions against current market price.
+
+        For each open position:
+        - Fetch current price from exchange
+        - If price hit stop loss → close with loss
+        - If price hit TP1 → close with profit
+        - Also simulate fill: mark submitted orders as filled at entry price
+
+        Returns the number of positions closed this cycle.
+        """
+        pool = self._db.pool
+        rows = await pool.fetch(queries.SELECT_OPEN_ORDERS)
+
+        if not rows:
+            return 0
+
+        closed_count = 0
+
+        # Group by symbol to minimise ticker fetches
+        symbols = set(r["symbol"] for r in rows)
+        tickers: dict[str, float] = {}
+        for symbol in symbols:
+            try:
+                ticker = await self._market.fetch_ticker(symbol)
+                tickers[symbol] = float(ticker["last"])
+            except Exception as e:
+                logger.warning(f"Failed to fetch ticker for {symbol}: {e}")
+
+        for row in rows:
+            order_id = row["id"]
+            symbol = row["symbol"]
+            direction = row["direction"]
+            state = row["state"]
+            entry_price = float(row["entry_price"])
+            stop_loss = float(row["stop_loss"])
+            take_profit_1 = float(row["take_profit_1"])
+            quantity = float(row["quantity"])
+
+            current_price = tickers.get(symbol)
+            if current_price is None:
+                continue
+
+            # Step 1: Simulate fill for submitted orders
+            if state == "submitted":
+                await pool.execute(
+                    queries.UPDATE_ORDER_FILL,
+                    order_id, "filled", quantity, entry_price,
+                )
+                logger.info(
+                    f"PAPER FILL: {symbol} {direction} {quantity:.6f} @ {entry_price}"
+                )
+                state = "filled"
+
+            # Step 2: Check SL/TP against current price
+            hit_sl = False
+            hit_tp = False
+
+            if direction == "long":
+                hit_sl = current_price <= stop_loss
+                hit_tp = current_price >= take_profit_1
+            elif direction == "short":
+                hit_sl = current_price >= stop_loss
+                hit_tp = current_price <= take_profit_1
+
+            if not hit_sl and not hit_tp:
+                continue
+
+            # Calculate P&L
+            if direction == "long":
+                exit_price = stop_loss if hit_sl else take_profit_1
+                pnl = (exit_price - entry_price) * quantity
+            else:
+                exit_price = stop_loss if hit_sl else take_profit_1
+                pnl = (entry_price - exit_price) * quantity
+
+            # Simulate fees (0.1% round trip — entry + exit)
+            fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
+
+            pnl_net = pnl - fees
+            reason = "STOP LOSS" if hit_sl else "TAKE PROFIT"
+
+            # Close the order
+            await pool.execute(
+                queries.UPDATE_ORDER_CLOSE,
+                order_id, pnl_net, fees,
+            )
+
+            closed_count += 1
+            pnl_emoji = "+" if pnl_net >= 0 else ""
+            logger.info(
+                f"PAPER CLOSE: {symbol} {direction} | {reason} @ {exit_price:.2f} | "
+                f"P&L: {pnl_emoji}{pnl_net:.2f} (fees: {fees:.2f}) | "
+                f"Price now: {current_price:.2f}"
+            )
+
+            # Send alert
+            await self._telegram.send_order_alert(TradeOrder(
+                id=str(order_id),
+                symbol=symbol,
+                direction=direction,
+                state=OrderState.CLOSED,
+                entry_price=entry_price,
+                stop_loss=stop_loss,
+                take_profit_1=take_profit_1,
+                quantity=quantity,
+                filled_price=exit_price,
+                pnl=pnl_net,
+                fees=fees,
+            ))
+
+        return closed_count
+
     async def _persist_signal(self, signal: DivergenceSignal) -> str | None:
         """Save the signal to the database and return its ID."""
         try:

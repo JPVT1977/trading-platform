@@ -106,6 +106,10 @@ class MarketDataClient:
             params={"stopPrice": stop_price, "triggerPrice": stop_price},
         )
 
+    async def fetch_ticker(self, symbol: str) -> dict:
+        """Fetch current ticker (last price, bid, ask) for a symbol."""
+        return await self._exchange.fetch_ticker(symbol)
+
     async def cancel_order(self, order_id: str, symbol: str) -> dict:
         """Cancel an open order."""
         logger.info(f"Cancelling order {order_id} for {symbol}")

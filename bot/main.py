@@ -53,8 +53,34 @@ async def analysis_cycle(
     )
     cycle_start = time.monotonic()
 
+    # --- Monitor open positions (check SL/TP hits) ---
+    try:
+        closed = await engine.monitor_open_positions()
+        if closed > 0:
+            logger.info(f"Position monitor: {closed} position(s) closed")
+    except Exception as e:
+        logger.error(f"Position monitor error: {e}")
+
     # Get current portfolio state for risk checks
     portfolio = await risk.get_portfolio_state()
+
+    # --- Record portfolio snapshot for equity curve ---
+    try:
+        from bot.database import queries as q
+        open_count = await db.pool.fetchval(q.COUNT_OPEN_ORDERS)
+        pnl_row = await db.pool.fetchrow(q.SELECT_DAILY_PNL)
+        daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
+        daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
+        await db.pool.execute(
+            q.INSERT_PORTFOLIO_SNAPSHOT,
+            portfolio.total_equity + daily_pnl,
+            portfolio.available_balance,
+            open_count,
+            daily_pnl,
+            daily_trades,
+        )
+    except Exception as e:
+        logger.error(f"Failed to record portfolio snapshot: {e}")
 
     for symbol in settings.symbols:
         for timeframe in settings.timeframes:
