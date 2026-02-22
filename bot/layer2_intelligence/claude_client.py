@@ -58,7 +58,8 @@ class ClaudeClient:
             messages=[{
                 "role": "user",
                 "content": (
-                    f"Analyse this {symbol} {timeframe} data for divergences.\n\n"
+                    f"Analyse this {symbol} {timeframe} data for divergences. "
+                    f"Candle status: {payload.get('candle_status', 'closed')}.\n\n"
                     f"```json\n{json.dumps(payload)}\n```"
                 ),
             }],

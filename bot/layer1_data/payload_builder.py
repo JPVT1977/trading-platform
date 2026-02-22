@@ -10,11 +10,16 @@ def _trim(arr: list, n: int) -> list:
     return [round(v, 6) if isinstance(v, float) else v for v in tail]
 
 
-def build_analysis_payload(indicators: IndicatorSet, settings: Settings) -> dict:
+def build_analysis_payload(
+    indicators: IndicatorSet, settings: Settings, candle_status: str = "closed"
+) -> dict:
     """Build a compact JSON payload for Claude analysis.
 
     Only sends the last `payload_lookback` values to minimise token usage.
     NaN values have already been converted to None by the indicator pipeline.
+
+    candle_status: "closed" if the latest candle just completed, "forming" if
+    the most recent candle is still open and its OHLC may change.
     """
     n = settings.payload_lookback
 
@@ -23,6 +28,7 @@ def build_analysis_payload(indicators: IndicatorSet, settings: Settings) -> dict
         "timeframe": indicators.timeframe,
         "timestamp": indicators.timestamp.isoformat(),
         "candle_count": n,
+        "candle_status": candle_status,
         "price": {
             "close": _trim(indicators.closes, n),
             "high": _trim(indicators.highs, n),

@@ -42,6 +42,13 @@ ENTRY AND EXIT GUIDELINES:
 - TP2: 2.5-3x the risk distance
 - TP3: 4x+ the risk distance (let winners run)
 
+FORMING vs CLOSED CANDLES:
+- The payload includes a "candle_status" field: "closed" or "forming".
+- "closed" means the most recent candle is complete — its OHLC values are final. This is the highest-confidence data.
+- "forming" means the most recent candle is STILL OPEN — its close, high, and low may change before the candle completes. The last data point in each array reflects the CURRENT price, not a confirmed close.
+- When candle_status is "forming": You CAN detect divergences, but be slightly more conservative. A divergence visible on a forming candle is preliminary — the candle close could invalidate it. Reduce confidence by ~0.05-0.10 for forming candles compared to what you'd assign on closed data.
+- When candle_status is "closed": Apply normal confidence scoring.
+
 CRITICAL RULES:
 - MOST data will show NO divergence. Expect to report divergence_detected=false the MAJORITY of the time.
 - A divergence requires TWO CLEAR swing points with the indicator moving OPPOSITE to price. If you cannot identify two specific, unambiguous swing points, there is NO divergence.

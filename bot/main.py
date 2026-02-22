@@ -36,16 +36,18 @@ from bot.layer5_monitoring.sms import SMSClient
 from bot.layer5_monitoring.telegram import TelegramClient
 from bot.models import AnalysisCycleResult
 
-# Track last candle timestamp per symbol/timeframe to skip duplicate Claude calls
+# Track last candle timestamp per symbol/timeframe to determine forming vs closed
 _last_candle_times: dict[str, str] = {}
+
+# Track which candle already produced a signal (prevents duplicate signals per candle)
+_signaled_candles: dict[str, str] = {}
 
 
 async def _seed_candle_cache(market: MarketDataClient, settings: Settings) -> None:
-    """Populate _last_candle_times from exchange so deploys don't re-trigger Claude.
+    """Populate _last_candle_times from exchange so first cycle knows candle status.
 
-    Without this, every restart wipes the in-memory dedup cache, causing Claude
-    to re-analyze every symbol and potentially trigger reversal trades on existing
-    positions that haven't actually changed.
+    Without this, every restart treats the first candle as "closed" (new timestamp)
+    which could trigger false confidence boosts or reversal trades.
 
     Fetches 1 candle per symbol/timeframe directly from the exchange — the same
     source the analysis cycle uses — so timestamps match exactly.
@@ -61,7 +63,7 @@ async def _seed_candle_cache(market: MarketDataClient, settings: Settings) -> No
             except Exception as e:
                 logger.warning(f"Failed to seed candle cache for {symbol}/{timeframe}: {e}")
 
-    logger.info(f"Candle cache seeded with {len(_last_candle_times)} entries — deploy won't re-trigger trades")
+    logger.info(f"Candle cache seeded with {len(_last_candle_times)} entries")
 
 
 async def position_monitor(engine: ExecutionEngine) -> None:
@@ -166,28 +168,41 @@ async def analysis_cycle(
                 indicators = compute_indicators(candles, symbol, timeframe, settings)
                 result.symbols_analyzed.append(candle_key)
 
-                # Skip Claude API if candle data hasn't changed (saves cost + avoids dupes)
+                # Determine candle status: "closed" (new candle appeared) or "forming" (mid-candle)
                 latest_ts = candles[-1].timestamp.isoformat()
-                if _last_candle_times.get(candle_key) == latest_ts:
-                    logger.debug(f"Skipping {candle_key}: no new candle since last cycle")
-                    result.symbol_details[candle_key] = "no_new_candle"
-                    continue
-                _last_candle_times[candle_key] = latest_ts
+                prev_ts = _last_candle_times.get(candle_key)
+                if prev_ts != latest_ts:
+                    # New candle timestamp — previous candle just closed
+                    candle_status = "closed"
+                    _last_candle_times[candle_key] = latest_ts
+                    # Clear signal dedup for this pair (new candle = fresh slate)
+                    _signaled_candles.pop(candle_key, None)
+                    logger.info(f"New candle detected: {candle_key} ({latest_ts})")
+                else:
+                    candle_status = "forming"
 
-                payload = build_analysis_payload(indicators, settings)
+                # Signal-level dedup: skip if we already found a divergence on this candle
+                if _signaled_candles.get(candle_key) == latest_ts:
+                    logger.debug(f"Skipping {candle_key}: already signaled on this candle")
+                    result.symbol_details[candle_key] = "already_signaled"
+                    continue
+
+                payload = build_analysis_payload(indicators, settings, candle_status=candle_status)
 
                 # --- Layer 2: Intelligence ---
                 signal = await claude.analyze_divergence(payload, symbol, timeframe)
 
                 if not signal.divergence_detected:
-                    logger.debug(f"No divergence: {symbol}/{timeframe}")
-                    result.symbol_details[candle_key] = "no_divergence"
+                    logger.debug(f"No divergence: {symbol}/{timeframe} ({candle_status})")
+                    result.symbol_details[candle_key] = f"no_divergence ({candle_status})"
                     continue
 
                 result.signals_found += 1
+                # Mark this candle as signaled so we don't re-analyze next minute
+                _signaled_candles[candle_key] = latest_ts
                 logger.info(
                     f"Signal detected: {symbol}/{timeframe} — "
-                    f"{signal.divergence_type} ({signal.confidence:.0%})"
+                    f"{signal.divergence_type} ({signal.confidence:.0%}) [{candle_status}]"
                 )
 
                 # --- Layer 2: Validation (deterministic, <1ms) ---
