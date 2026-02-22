@@ -81,12 +81,25 @@ class Settings(BaseSettings):
     oanda_max_correlation_exposure: int = 3
     oanda_min_confidence: float = 0.7
 
+    ig_max_open_positions: int = 4
+    ig_max_correlation_exposure: int = 3
+    ig_min_confidence: float = 0.7
+
     # --- OANDA Forex Broker (optional) ---
     oanda_api_token: str = ""
     oanda_account_id: str = ""
     oanda_sandbox: bool = True  # True = practice account
     oanda_symbols: list[str] = Field(default=[])
     oanda_starting_equity: float = 10000.0
+
+    # --- IG Markets Broker (optional) ---
+    ig_api_key: str = ""
+    ig_username: str = ""
+    ig_password: str = ""
+    ig_account_id: str = ""
+    ig_demo: bool = True  # True = demo-api.ig.com
+    ig_symbols: list[str] = Field(default=[])
+    ig_starting_equity: float = 10000.0
 
     # --- Phase 2: Multi-TF Confirmation ---
     use_multi_tf_confirmation: bool = False  # 4h setup + 1h trigger
@@ -95,6 +108,10 @@ class Settings(BaseSettings):
     @property
     def oanda_enabled(self) -> bool:
         return bool(self.oanda_api_token and self.oanda_account_id and self.oanda_symbols)
+
+    @property
+    def ig_enabled(self) -> bool:
+        return bool(self.ig_api_key and self.ig_username and self.ig_password and self.ig_symbols)
 
     # --- Scheduling ---
     analysis_interval_minutes: int = 1
@@ -121,16 +138,22 @@ class Settings(BaseSettings):
     def get_max_open_positions(self, broker_id: str = "binance") -> int:
         if broker_id == "oanda":
             return self.oanda_max_open_positions
+        if broker_id == "ig":
+            return self.ig_max_open_positions
         return self.binance_max_open_positions
 
     def get_max_correlation_exposure(self, broker_id: str = "binance") -> int:
         if broker_id == "oanda":
             return self.oanda_max_correlation_exposure
+        if broker_id == "ig":
+            return self.ig_max_correlation_exposure
         return self.binance_max_correlation_exposure
 
     def get_min_confidence(self, broker_id: str = "binance") -> float:
         if broker_id == "oanda":
             return self.oanda_min_confidence
+        if broker_id == "ig":
+            return self.ig_min_confidence
         return self.binance_min_confidence
 
     @field_validator("trading_mode", mode="before")

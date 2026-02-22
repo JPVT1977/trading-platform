@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Brokers{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Broker Connections</h1>
+    <p class="page-subtitle">Manage and monitor exchange connections</p>
+</div>
+
+<div hx-get="/api/brokers" hx-trigger="every 30s" hx-swap="innerHTML">
+    {% include "partials/brokers_cards.html" %}
+</div>
+{% endblock %}

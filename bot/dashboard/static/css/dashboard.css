@@ -673,6 +673,55 @@ tr:hover td {
     50% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.8); }
 }
 
+.status-dot.grey {
+    background: var(--text-dim);
+    box-shadow: 0 0 6px rgba(100, 116, 139, 0.3);
+}
+
+.status-dot.yellow {
+    background: var(--warning);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+/* ============================================================
+   Broker Cards
+   ============================================================ */
+
+.broker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 20px;
+}
+
+.btn-sm {
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+}
+
+.loader-mini {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
 /* ============================================================
    Verdict Badges (Performance Page)
    ============================================================ */

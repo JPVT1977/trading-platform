@@ -1,0 +1,79 @@
+<div class="broker-grid">
+    {% for b in brokers %}
+    <div class="card">
+        <div class="card-header">
+            <div class="flex items-center gap-1">
+                {% if b.status == 'active' %}
+                <span class="status-dot green"></span>
+                {% elif b.status == 'configured' %}
+                <span class="status-dot yellow"></span>
+                {% else %}
+                <span class="status-dot grey"></span>
+                {% endif %}
+                <h2 class="card-title">{{ b.name }}</h2>
+            </div>
+            {% if b.status == 'active' %}
+            <span class="badge badge-success">Active</span>
+            {% elif b.status == 'configured' %}
+            <span class="badge badge-warning">Configured</span>
+            {% else %}
+            <span class="badge badge-muted">Not Configured</span>
+            {% endif %}
+        </div>
+
+        <div class="setting-group">
+            <h3>Credentials</h3>
+            {% for key, value in b.credentials.items() %}
+            <div class="setting-row">
+                <span class="key">{{ key }}</span>
+                <span class="value">{{ value }}</span>
+            </div>
+            {% endfor %}
+            <div class="setting-row">
+                <span class="key">Environment</span>
+                <span class="value">{{ b.environment }}</span>
+            </div>
+        </div>
+
+        <div class="setting-group mt-2">
+            <h3>Instruments</h3>
+            <div class="setting-row">
+                <span class="key">Count</span>
+                <span class="value">{{ b.instruments }}</span>
+            </div>
+            {% if b.symbols %}
+            <div class="setting-row">
+                <span class="key">Symbols</span>
+                <span class="value text-sm">{{ b.symbols }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="setting-group mt-2">
+            <h3>Risk Limits</h3>
+            {% for key, value in b.risk.items() %}
+            <div class="setting-row">
+                <span class="key">{{ key }}</span>
+                <span class="value">{{ value }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if b.configured %}
+        <div class="mt-2" style="display:flex; align-items:center; gap:12px;">
+            <button class="btn-sm btn-primary"
+                    hx-post="/api/brokers/test?broker={{ b.id }}"
+                    hx-target="#test-result-{{ b.id }}"
+                    hx-swap="innerHTML"
+                    hx-indicator="#spinner-{{ b.id }}">
+                Test Connection
+            </button>
+            <span class="htmx-indicator" id="spinner-{{ b.id }}">
+                <span class="loader-mini"></span>
+            </span>
+            <span id="test-result-{{ b.id }}"></span>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>

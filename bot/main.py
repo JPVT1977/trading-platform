@@ -580,8 +580,17 @@ async def main() -> None:
     else:
         logger.info("OANDA not configured — crypto-only mode")
 
+    # Register IG Markets if configured
+    if settings.ig_enabled:
+        from bot.layer1_data.ig_client import IGClient
+        ig = IGClient(settings)
+        router.register(ig)
+        logger.info(f"IG Markets enabled: {settings.ig_symbols}")
+    else:
+        logger.info("IG Markets not configured — skipping")
+
     # Combined symbol list
-    all_symbols = list(settings.symbols) + list(settings.oanda_symbols)
+    all_symbols = list(settings.symbols) + list(settings.oanda_symbols) + list(settings.ig_symbols)
 
     claude = ClaudeClient(settings)
     risk = RiskManager(settings, db)
@@ -602,6 +611,8 @@ async def main() -> None:
     brokers_status = "Binance"
     if settings.oanda_enabled:
         brokers_status += f" + OANDA ({len(settings.oanda_symbols)} forex pairs)"
+    if settings.ig_enabled:
+        brokers_status += f" + IG ({len(settings.ig_symbols)} instruments)"
     startup_msg = (
         f"Bot Started | Mode: {settings.trading_mode.value} | "
         f"Brokers: {brokers_status} | "

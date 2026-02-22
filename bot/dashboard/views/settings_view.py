@@ -52,6 +52,22 @@ class SettingsViews:
                     "Max Tokens": str(s.claude_max_tokens),
                     "API Key": "***" + s.anthropic_api_key[-4:] if len(s.anthropic_api_key) > 4 else "(not set)",
                 },
+                "OANDA": {
+                    "Enabled": str(s.oanda_enabled),
+                    "Environment": "Practice" if s.oanda_sandbox else "Live",
+                    "API Token": "***" + s.oanda_api_token[-4:] if len(s.oanda_api_token) > 4 else "(not set)",
+                    "Symbols": ", ".join(s.oanda_symbols) if s.oanda_symbols else "(none)",
+                    "Max Positions": str(s.oanda_max_open_positions),
+                    "Min Confidence": f"{s.oanda_min_confidence:.0%}",
+                },
+                "IG Markets": {
+                    "Enabled": str(s.ig_enabled),
+                    "Environment": "Demo" if s.ig_demo else "Live",
+                    "API Key": "***" + s.ig_api_key[-4:] if len(s.ig_api_key) > 4 else "(not set)",
+                    "Symbols": ", ".join(s.ig_symbols) if s.ig_symbols else "(none)",
+                    "Max Positions": str(s.ig_max_open_positions),
+                    "Min Confidence": f"{s.ig_min_confidence:.0%}",
+                },
                 "Alerts": {
                     "SMS Enabled": str(bool(s.clicksend_username and s.clicksend_api_key)),
                     "SMS From": s.clicksend_from_name,

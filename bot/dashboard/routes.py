@@ -10,6 +10,7 @@ from aiohttp import web
 
 from bot.dashboard import queries as dq
 from bot.dashboard.views.auth import AuthViews
+from bot.dashboard.views.brokers import BrokersViews
 from bot.dashboard.views.equity import EquityViews
 from bot.dashboard.views.overview import OverviewViews
 from bot.dashboard.views.performance import PerformanceViews
@@ -42,6 +43,7 @@ def setup_routes(
     equity = EquityViews(db_pool)
     performance = PerformanceViews(db_pool)
     settings_view = SettingsViews(settings)
+    brokers = BrokersViews(db_pool, settings, router=router)
 
     # Auth
     app.router.add_get("/login", auth.login_page)
@@ -59,6 +61,7 @@ def setup_routes(
     app.router.add_get("/dashboard/risk", risk.risk_page)
     app.router.add_get("/dashboard/equity", equity.equity_page)
     app.router.add_get("/dashboard/settings", settings_view.settings_page)
+    app.router.add_get("/dashboard/brokers", brokers.brokers_page)
     app.router.add_get("/dashboard/performance", performance.performance_page)
 
     # API endpoints (HTMX partials + JSON)
@@ -67,6 +70,8 @@ def setup_routes(
     app.router.add_get("/api/positions", positions.positions_partial)
     app.router.add_get("/api/risk", risk.risk_partial)
     app.router.add_get("/api/equity", equity.equity_api)
+    app.router.add_get("/api/brokers", brokers.brokers_partial)
+    app.router.add_post("/api/brokers/test", brokers.broker_test)
     app.router.add_get("/api/performance", performance.performance_partial)
     app.router.add_get("/api/performance/chart", performance.performance_chart_api)
     app.router.add_get("/api/heartbeat", _make_heartbeat_handler(db_pool))

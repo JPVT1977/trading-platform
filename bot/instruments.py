@@ -13,6 +13,7 @@ from enum import Enum
 class BrokerType(str, Enum):
     BINANCE = "binance"
     OANDA = "oanda"
+    IG = "ig"
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,41 @@ FOREX_INSTRUMENTS: dict[str, InstrumentInfo] = {
 }
 
 
+# --- IG Markets instruments (indices, commodities, share CFDs) ---
+
+IG_INSTRUMENTS: dict[str, InstrumentInfo] = {
+    "IX.D.SPTRD.IFE.IP": InstrumentInfo(
+        symbol="IX.D.SPTRD.IFE.IP", broker=BrokerType.IG, display_name="S&P 500",
+        pip_size=0.1, pip_value_per_unit=0.1, min_units=1,
+        max_leverage=20.0, fee_rate=0.0,
+        base_currency="USD", quote_currency="USD",
+    ),
+    "IX.D.NASDAQ.IFE.IP": InstrumentInfo(
+        symbol="IX.D.NASDAQ.IFE.IP", broker=BrokerType.IG, display_name="NASDAQ 100",
+        pip_size=0.1, pip_value_per_unit=0.1, min_units=1,
+        max_leverage=20.0, fee_rate=0.0,
+        base_currency="USD", quote_currency="USD",
+    ),
+    "IX.D.ASX.IFE.IP": InstrumentInfo(
+        symbol="IX.D.ASX.IFE.IP", broker=BrokerType.IG, display_name="ASX 200",
+        pip_size=0.1, pip_value_per_unit=0.1, min_units=1,
+        max_leverage=20.0, fee_rate=0.0,
+        base_currency="AUD", quote_currency="AUD",
+    ),
+    "CS.D.USCGC.TODAY.IP": InstrumentInfo(
+        symbol="CS.D.USCGC.TODAY.IP", broker=BrokerType.IG, display_name="Gold",
+        pip_size=0.1, pip_value_per_unit=0.1, min_units=1,
+        max_leverage=20.0, fee_rate=0.0,
+        base_currency="XAU", quote_currency="USD",
+    ),
+}
+
+
+def is_ig(symbol: str) -> bool:
+    """Check if a symbol is an IG Markets instrument."""
+    return symbol in IG_INSTRUMENTS
+
+
 def is_forex(symbol: str) -> bool:
     """Check if a symbol is a forex pair (handled by OANDA)."""
     return symbol in FOREX_INSTRUMENTS
@@ -78,6 +114,8 @@ def is_forex(symbol: str) -> bool:
 
 def route_symbol(symbol: str) -> BrokerType:
     """Determine which broker handles a given symbol."""
+    if symbol in IG_INSTRUMENTS:
+        return BrokerType.IG
     if symbol in FOREX_INSTRUMENTS:
         return BrokerType.OANDA
     return BrokerType.BINANCE
@@ -85,6 +123,8 @@ def route_symbol(symbol: str) -> BrokerType:
 
 def get_instrument(symbol: str) -> InstrumentInfo:
     """Return instrument metadata. Auto-generates for crypto symbols."""
+    if symbol in IG_INSTRUMENTS:
+        return IG_INSTRUMENTS[symbol]
     if symbol in FOREX_INSTRUMENTS:
         return FOREX_INSTRUMENTS[symbol]
 
