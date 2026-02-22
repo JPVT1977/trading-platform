@@ -19,6 +19,7 @@ from bot.models import (
 if TYPE_CHECKING:
     from bot.layer1_data.market_data import MarketDataClient
     from bot.layer4_risk.manager import RiskManager
+    from bot.layer5_monitoring.sms import SMSClient
     from bot.layer5_monitoring.telegram import TelegramClient
 
 
@@ -36,12 +37,14 @@ class ExecutionEngine:
         market_client: MarketDataClient,
         risk_manager: RiskManager,
         telegram: TelegramClient,
+        sms: SMSClient | None = None,
     ) -> None:
         self._settings = settings
         self._db = db
         self._market = market_client
         self._risk = risk_manager
         self._telegram = telegram
+        self._sms = sms
 
     async def execute_signal(
         self, signal: DivergenceSignal, portfolio: PortfolioState
@@ -133,8 +136,10 @@ class ExecutionEngine:
         except Exception as e:
             logger.error(f"Failed to persist order to database: {e}")
 
-        # Step 6: Alert
+        # Step 6: Alert (Telegram + SMS)
         await self._telegram.send_order_alert(order)
+        if self._sms:
+            await self._sms.send_order_alert(order)
 
         logger.info(
             f"Order executed: {order.symbol} {order.direction.value} "
@@ -240,8 +245,8 @@ class ExecutionEngine:
                 f"Price now: {current_price:.2f}"
             )
 
-            # Send alert
-            await self._telegram.send_order_alert(TradeOrder(
+            # Send alert (Telegram + SMS)
+            closed_order = TradeOrder(
                 id=str(order_id),
                 symbol=symbol,
                 direction=direction,
@@ -253,7 +258,10 @@ class ExecutionEngine:
                 filled_price=exit_price,
                 pnl=pnl_net,
                 fees=fees,
-            ))
+            )
+            await self._telegram.send_order_alert(closed_order)
+            if self._sms:
+                await self._sms.send_order_alert(closed_order)
 
         return closed_count
 

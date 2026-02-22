@@ -193,7 +193,7 @@ async def main() -> None:
     risk = RiskManager(settings, db)
     telegram = TelegramClient(settings)
     sms = SMSClient(settings)
-    engine = ExecutionEngine(settings, db, market, risk, telegram)
+    engine = ExecutionEngine(settings, db, market, risk, telegram, sms=sms)
     health = HealthServer(settings, db, market, risk_manager=risk)
 
     # Start health check server (Fly.io needs this)

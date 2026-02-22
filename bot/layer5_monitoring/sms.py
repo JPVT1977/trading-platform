@@ -103,13 +103,26 @@ class SMSClient:
         await self.send(msg)
 
     async def send_order_alert(self, order: TradeOrder) -> None:
-        """Send a formatted order execution alert via SMS."""
-        msg = (
-            f"ORDER: {order.symbol} {order.direction.value.upper()}\n"
-            f"Entry: {order.entry_price} Qty: {order.quantity:.6f}\n"
-            f"SL: {order.stop_loss} TP1: {order.take_profit_1}\n"
-            f"State: {order.state.value}"
-        )
+        """Send a formatted order alert via SMS — different for open vs close."""
+        direction = order.direction.value.upper() if hasattr(order.direction, "value") else str(order.direction).upper()
+        state = order.state.value if hasattr(order.state, "value") else str(order.state)
+
+        if state == "closed" and order.pnl is not None:
+            pnl_prefix = "+" if order.pnl >= 0 else ""
+            result = "WIN" if order.pnl >= 0 else "LOSS"
+            fees_str = f"{order.fees:.2f}" if order.fees else "0.00"
+            msg = (
+                f"TRADE CLOSED: {order.symbol} {direction}\n"
+                f"P&L: {pnl_prefix}{order.pnl:.2f} (fees: {fees_str})\n"
+                f"Entry: {order.entry_price} Exit: {order.filled_price}\n"
+                f"{result}"
+            )
+        else:
+            msg = (
+                f"TRADE OPENED: {order.symbol} {direction}\n"
+                f"Entry: {order.entry_price} Qty: {order.quantity:.6f}\n"
+                f"SL: {order.stop_loss} TP1: {order.take_profit_1}"
+            )
         await self.send(msg)
 
     async def send_circuit_breaker_alert(self, reason: str) -> None:
