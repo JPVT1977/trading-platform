@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -11,6 +12,9 @@ from loguru import logger
 
 from bot.dashboard import queries as dq
 
+if TYPE_CHECKING:
+    from bot.layer1_data.broker_router import BrokerRouter
+
 MELB_TZ = ZoneInfo("Australia/Melbourne")
 
 PAGE_SIZE = 25
@@ -18,21 +22,22 @@ PAGE_SIZE = 25
 
 class PositionsViews:
 
-    def __init__(self, db_pool, market_client=None) -> None:
+    def __init__(self, db_pool, router: BrokerRouter | None = None, market_client=None) -> None:
         self._pool = db_pool
-        self._market = market_client
+        self._router = router
 
     async def _enrich_open_positions(self, positions):
         """Add current_price and unrealized_pnl to open position rows."""
-        if not positions or not self._market:
+        if not positions or not self._router:
             return [dict(p) for p in positions]
 
-        # Fetch current prices
+        # Fetch current prices via broker router
         symbols = set(p["symbol"] for p in positions)
         tickers: dict[str, float] = {}
         for symbol in symbols:
             try:
-                ticker = await self._market.fetch_ticker(symbol)
+                broker = self._router.get_broker(symbol)
+                ticker = await broker.fetch_ticker(symbol)
                 tickers[symbol] = float(ticker["last"])
             except Exception as e:
                 logger.warning(f"Failed to fetch ticker for {symbol}: {e}")

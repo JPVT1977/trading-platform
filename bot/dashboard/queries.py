@@ -59,7 +59,7 @@ GET_OVERVIEW_STATS = """
 GET_RECENT_SIGNALS = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, validated, validation_reason,
-           reasoning, created_at
+           reasoning, broker, created_at
     FROM signals
     ORDER BY created_at DESC
     LIMIT $1
@@ -88,7 +88,7 @@ GET_LATEST_EQUITY = """
 GET_SIGNALS_ALL = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, take_profit_1, validated,
-           validation_reason, reasoning, created_at
+           validation_reason, reasoning, broker, created_at
     FROM signals
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -97,7 +97,7 @@ GET_SIGNALS_ALL = """
 GET_SIGNALS_VALIDATED = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, take_profit_1, validated,
-           validation_reason, reasoning, created_at
+           validation_reason, reasoning, broker, created_at
     FROM signals
     WHERE validated = TRUE
     ORDER BY created_at DESC
@@ -107,7 +107,7 @@ GET_SIGNALS_VALIDATED = """
 GET_SIGNALS_REJECTED = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, take_profit_1, validated,
-           validation_reason, reasoning, created_at
+           validation_reason, reasoning, broker, created_at
     FROM signals
     WHERE validated = FALSE
     ORDER BY created_at DESC
@@ -125,7 +125,7 @@ COUNT_SIGNALS_REJECTED = "SELECT COUNT(*) FROM signals WHERE validated = FALSE"
 GET_OPEN_POSITIONS = """
     SELECT o.id, o.symbol, o.direction, o.entry_price, o.stop_loss,
            o.take_profit_1, o.take_profit_2, o.quantity, o.state,
-           o.created_at, o.filled_price,
+           o.created_at, o.filled_price, o.broker,
            s.divergence_type, s.indicator, s.confidence, s.reasoning
     FROM orders o
     LEFT JOIN signals s ON o.signal_id = s.id
@@ -136,7 +136,7 @@ GET_OPEN_POSITIONS = """
 GET_CLOSED_POSITIONS = """
     SELECT o.id, o.symbol, o.direction, o.entry_price, o.filled_price,
            o.stop_loss, o.take_profit_1, o.quantity, o.pnl, o.fees,
-           o.state, o.created_at, o.closed_at,
+           o.state, o.created_at, o.closed_at, o.broker,
            s.divergence_type, s.indicator, s.confidence, s.reasoning
     FROM orders o
     LEFT JOIN signals s ON o.signal_id = s.id

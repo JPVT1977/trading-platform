@@ -28,7 +28,7 @@ from bot.dashboard.setup_users import seed_dashboard_users
 if TYPE_CHECKING:
     from bot.config import Settings
     from bot.database.connection import Database
-    from bot.layer1_data.market_data import MarketDataClient
+    from bot.layer1_data.broker_router import BrokerRouter
     from bot.layer4_risk.manager import RiskManager
 
 
@@ -39,12 +39,13 @@ class HealthServer:
         self,
         settings: Settings,
         db: Database,
-        market_client: MarketDataClient | None = None,
+        router: BrokerRouter | None = None,
+        market_client=None,  # legacy compat
         risk_manager: RiskManager | None = None,
     ) -> None:
         self._settings = settings
         self._db = db
-        self._market = market_client
+        self._router = router
         self._risk_manager = risk_manager
 
         # Create app with auth middleware
@@ -87,7 +88,7 @@ class HealthServer:
         })
 
     async def _deep_health_check(self, request: web.Request) -> web.Response:
-        """Deep health check — verify all dependencies."""
+        """Deep health check — verify all dependencies including each broker."""
         checks: dict[str, str] = {}
 
         # Database connectivity
@@ -98,13 +99,14 @@ class HealthServer:
         except Exception as e:
             checks["database"] = f"error: {e}"
 
-        # Exchange connectivity (if market client available)
-        if self._market:
-            try:
-                await self._market.check_connectivity()
-                checks["exchange"] = "ok"
-            except Exception as e:
-                checks["exchange"] = f"error: {e}"
+        # Check each registered broker
+        if self._router:
+            for broker in self._router.all_brokers:
+                try:
+                    await broker.check_connectivity()
+                    checks[f"broker_{broker.broker_id}"] = "ok"
+                except Exception as e:
+                    checks[f"broker_{broker.broker_id}"] = f"error: {e}"
 
         all_ok = all(v == "ok" for v in checks.values())
         status_code = 200 if all_ok else 503
@@ -131,7 +133,7 @@ class HealthServer:
             self._db.pool,
             self._settings,
             risk_manager=self._risk_manager,
-            market_client=self._market,
+            router=self._router,
         )
 
         self._runner = web.AppRunner(self._app)

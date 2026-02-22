@@ -12,11 +12,16 @@ from tenacity import (
 )
 
 from bot.config import Settings
+from bot.layer1_data.broker_interface import BrokerInterface
 from bot.models import Candle
 
 
-class MarketDataClient:
+class MarketDataClient(BrokerInterface):
     """Async CCXT exchange client with retry logic."""
+
+    @property
+    def broker_id(self) -> str:
+        return "binance"
 
     def __init__(self, settings: Settings) -> None:
         exchange_class = getattr(ccxt, settings.exchange_id)

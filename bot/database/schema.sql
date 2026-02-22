@@ -226,3 +226,39 @@ CREATE INDEX IF NOT EXISTS idx_signal_outcomes_verdict
 
 CREATE INDEX IF NOT EXISTS idx_signal_outcomes_created
     ON signal_outcomes (created_at DESC);
+
+-- ===================================================================
+-- Multi-Broker: Add broker column to existing tables (idempotent)
+-- ===================================================================
+
+DO $$ BEGIN
+    ALTER TABLE signals ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE orders ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE portfolio_snapshots ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE candles ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_signals_broker
+    ON signals (broker, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_orders_broker
+    ON orders (broker, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_orders_broker_open
+    ON orders (broker, state) WHERE state NOT IN ('closed', 'cancelled', 'rejected');
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_broker
+    ON portfolio_snapshots (broker, time DESC);

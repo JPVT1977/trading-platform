@@ -33,6 +33,8 @@ def validate_signal(
         )
 
     # Rule 1: Minimum confidence threshold
+    # NOTE: Per-broker confidence thresholds are applied in main.py after validation.
+    # This global check acts as an absolute floor across all brokers.
     if signal.confidence < settings.min_confidence:
         return ValidationResult(
             passed=False,

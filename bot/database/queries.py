@@ -32,9 +32,9 @@ INSERT_SIGNAL = """
         symbol, timeframe, divergence_type, indicator,
         confidence, direction, entry_price, stop_loss,
         take_profit_1, take_profit_2, take_profit_3,
-        reasoning, raw_payload, validated, validation_reason, created_at
+        reasoning, raw_payload, validated, validation_reason, broker, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
     RETURNING id
 """
 
@@ -53,9 +53,9 @@ INSERT_ORDER = """
     INSERT INTO orders (
         signal_id, exchange_order_id, symbol, direction,
         state, entry_price, stop_loss, take_profit_1,
-        take_profit_2, take_profit_3, quantity, created_at
+        take_profit_2, take_profit_3, quantity, broker, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     RETURNING id
 """
 
@@ -108,9 +108,9 @@ COUNT_OPEN_ORDERS = """
 INSERT_PORTFOLIO_SNAPSHOT = """
     INSERT INTO portfolio_snapshots (
         time, total_equity, available_balance,
-        open_position_count, daily_pnl, daily_trades
+        open_position_count, daily_pnl, daily_trades, broker
     )
-    VALUES (NOW(), $1, $2, $3, $4, $5)
+    VALUES (NOW(), $1, $2, $3, $4, $5, $6)
 """
 
 SELECT_DAILY_PNL = """
@@ -205,4 +205,42 @@ UPDATE_OUTCOME = """
         verdict = $22, fully_resolved = $23,
         last_checked_at = NOW()
     WHERE id = $1
+"""
+
+# ---------------------------------------------------------------------------
+# Broker-filtered variants (multi-broker support)
+# ---------------------------------------------------------------------------
+
+SELECT_CUMULATIVE_PNL_BY_BROKER = """
+    SELECT COALESCE(SUM(pnl), 0) as total_pnl
+    FROM orders
+    WHERE state = 'closed' AND broker = $1
+"""
+
+SELECT_OPEN_ORDERS_BY_BROKER = """
+    SELECT * FROM orders
+    WHERE state NOT IN ('closed', 'cancelled', 'rejected', 'error')
+      AND broker = $1
+    ORDER BY created_at DESC
+"""
+
+SELECT_DAILY_PNL_BY_BROKER = """
+    SELECT COALESCE(SUM(pnl), 0) as daily_pnl,
+           COUNT(*) as daily_trades
+    FROM orders
+    WHERE state = 'closed'
+      AND closed_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+      AND broker = $1
+"""
+
+SELECT_PEAK_EQUITY_BY_BROKER = """
+    SELECT COALESCE(MAX(total_equity), 0) as peak_equity
+    FROM portfolio_snapshots
+    WHERE broker = $1
+"""
+
+COUNT_OPEN_ORDERS_BY_BROKER = """
+    SELECT COUNT(*) FROM orders
+    WHERE state NOT IN ('closed', 'cancelled', 'rejected', 'error')
+      AND broker = $1
 """

@@ -63,18 +63,38 @@ class Settings(BaseSettings):
     dashboard_user_2_password: str = ""
     dashboard_user_2_name: str = "Sam"
 
-    # --- Risk Management ---
+    # --- Risk Management (global defaults) ---
     max_position_pct: float = 2.0
     max_daily_loss_pct: float = 5.0
-    max_open_positions: int = 6
-    max_correlation_exposure: int = 4
+    max_open_positions: int = 4
+    max_correlation_exposure: int = 3
     min_risk_reward: float = 2.0
     min_confidence: float = 0.7
     max_drawdown_pct: float = 15.0
 
+    # --- Per-broker risk overrides (applied independently per broker) ---
+    binance_max_open_positions: int = 4
+    binance_max_correlation_exposure: int = 3
+    binance_min_confidence: float = 0.7
+
+    oanda_max_open_positions: int = 4
+    oanda_max_correlation_exposure: int = 3
+    oanda_min_confidence: float = 0.7
+
+    # --- OANDA Forex Broker (optional) ---
+    oanda_api_token: str = ""
+    oanda_account_id: str = ""
+    oanda_sandbox: bool = True  # True = practice account
+    oanda_symbols: list[str] = Field(default=[])
+    oanda_starting_equity: float = 10000.0
+
     # --- Phase 2: Multi-TF Confirmation ---
     use_multi_tf_confirmation: bool = False  # 4h setup + 1h trigger
     setup_expiry_hours: int = 24  # How long a 4h setup stays valid
+
+    @property
+    def oanda_enabled(self) -> bool:
+        return bool(self.oanda_api_token and self.oanda_account_id and self.oanda_symbols)
 
     # --- Scheduling ---
     analysis_interval_minutes: int = 1
@@ -97,6 +117,21 @@ class Settings(BaseSettings):
     ema_long: int = 200
     lookback_candles: int = 200
     payload_lookback: int = 30
+
+    def get_max_open_positions(self, broker_id: str = "binance") -> int:
+        if broker_id == "oanda":
+            return self.oanda_max_open_positions
+        return self.binance_max_open_positions
+
+    def get_max_correlation_exposure(self, broker_id: str = "binance") -> int:
+        if broker_id == "oanda":
+            return self.oanda_max_correlation_exposure
+        return self.binance_max_correlation_exposure
+
+    def get_min_confidence(self, broker_id: str = "binance") -> float:
+        if broker_id == "oanda":
+            return self.oanda_min_confidence
+        return self.binance_min_confidence
 
     @field_validator("trading_mode", mode="before")
     @classmethod

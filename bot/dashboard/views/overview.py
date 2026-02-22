@@ -2,24 +2,30 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import aiohttp_jinja2
 from aiohttp import web
 from loguru import logger
 
 from bot.dashboard import queries as dq
 
+if TYPE_CHECKING:
+    from bot.layer1_data.broker_router import BrokerRouter
+
 
 class OverviewViews:
 
-    def __init__(self, db_pool, settings, risk_manager=None, market_client=None) -> None:
+    def __init__(self, db_pool, settings, risk_manager=None, router: BrokerRouter | None = None) -> None:
         self._pool = db_pool
         self._settings = settings
         self._risk_manager = risk_manager
-        self._market = market_client
+        self._router = router
 
     @aiohttp_jinja2.template("overview.html")
     async def overview_page(self, request: web.Request) -> dict:
         """GET /dashboard — full overview page."""
+        broker = request.query.get("broker", "all")
         stats = await self._get_stats()
         signals = await self._pool.fetch(dq.GET_RECENT_SIGNALS, 10)
         cycles = await self._pool.fetch(dq.GET_RECENT_CYCLES, 5)
@@ -31,10 +37,13 @@ class OverviewViews:
             "stats": stats,
             "signals": signals,
             "cycles": cycles,
+            "broker_filter": broker,
+            "oanda_enabled": self._settings.oanda_enabled,
         }
 
     async def overview_partial(self, request: web.Request) -> web.Response:
         """GET /api/overview — HTMX partial for live stats refresh."""
+        broker = request.query.get("broker", "all")
         stats = await self._get_stats()
         signals = await self._pool.fetch(dq.GET_RECENT_SIGNALS, 10)
         cycles = await self._pool.fetch(dq.GET_RECENT_CYCLES, 5)
@@ -45,6 +54,8 @@ class OverviewViews:
             "stats": stats,
             "signals": signals,
             "cycles": cycles,
+            "broker_filter": broker,
+            "oanda_enabled": self._settings.oanda_enabled,
         }
         return aiohttp_jinja2.render_template(
             "partials/overview_stats.html", request, context
@@ -79,7 +90,7 @@ class OverviewViews:
 
     async def _get_unrealized_pnl(self) -> float:
         """Fetch live prices and calculate unrealized P&L for open positions."""
-        if not self._market:
+        if not self._router:
             return 0.0
 
         try:
@@ -92,7 +103,8 @@ class OverviewViews:
             tickers: dict[str, float] = {}
             for symbol in symbols:
                 try:
-                    ticker = await self._market.fetch_ticker(symbol)
+                    broker = self._router.get_broker(symbol)
+                    ticker = await broker.fetch_ticker(symbol)
                     tickers[symbol] = float(ticker["last"])
                 except Exception:
                     pass

@@ -11,6 +11,7 @@
                 <th>Direction</th>
                 <th>Entry</th>
                 <th>SL</th>
+                <th>Broker</th>
                 <th>Status</th>
                 <th>Reason</th>
             </tr>
@@ -34,6 +35,13 @@
                 <td class="mono">{{ "%.2f" | format(s.entry_price) if s.entry_price else '-' }}</td>
                 <td class="mono">{{ "%.2f" | format(s.stop_loss) if s.stop_loss else '-' }}</td>
                 <td>
+                    {% if s.broker is defined and s.broker == 'oanda' %}
+                    <span class="badge badge-info" style="font-size:10px;">OANDA</span>
+                    {% else %}
+                    <span class="badge badge-muted" style="font-size:10px;">Binance</span>
+                    {% endif %}
+                </td>
+                <td>
                     {% if s.validated %}
                     <span class="badge badge-success">Pass</span>
                     {% else %}
@@ -45,7 +53,7 @@
                 </td>
             </tr>
             <tr class="expand-content" id="expand-{{ s.id }}">
-                <td colspan="11">
+                <td colspan="12">
                     <strong>Reasoning:</strong> {{ s.reasoning or 'No reasoning provided' }}
                     {% if s.take_profit_1 %}
                     <br><strong>TP1:</strong> {{ "%.2f" | format(s.take_profit_1) }}
@@ -56,7 +64,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="11" class="text-muted" style="text-align:center;padding:40px;">No signals found</td></tr>
+            <tr><td colspan="12" class="text-muted" style="text-align:center;padding:40px;">No signals found</td></tr>
             {% endfor %}
         </tbody>
     </table>

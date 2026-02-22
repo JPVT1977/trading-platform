@@ -1,7 +1,7 @@
 """Divergence Trading Bot — Main Entry Point.
 
 Wires all five layers together:
-  Layer 1: Data Ingestion (CCXT + TA-Lib)
+  Layer 1: Data Ingestion (CCXT/OANDA + TA-Lib)
   Layer 2: Intelligence (Claude API with tool_use)
   Layer 3: Execution Engine (deterministic, FSM-based)
   Layer 4: Risk Management (hard-coded rules, circuit breakers)
@@ -11,6 +11,10 @@ Phase 2: Multi-TF Confirmation (4h setup + 1h trigger)
   When use_multi_tf_confirmation is enabled, 4h signals are stored as "setups"
   and only become trades when a 1h divergence in the same direction confirms
   within setup_expiry_hours. This filters out weak signals.
+
+Multi-broker: BrokerRouter dispatches API calls to the correct broker
+  (Binance for crypto, OANDA for forex). If OANDA is not configured, the
+  bot behaves exactly as it does today.
 """
 
 from __future__ import annotations
@@ -28,6 +32,8 @@ from loguru import logger
 
 from bot.config import Settings, TradingMode
 from bot.database.connection import Database
+from bot.instruments import route_symbol
+from bot.layer1_data.broker_router import BrokerRouter
 from bot.layer1_data.indicators import compute_indicators
 from bot.layer1_data.market_data import MarketDataClient
 from bot.layer1_data.payload_builder import build_analysis_payload
@@ -65,27 +71,35 @@ class ActiveSetup:
     signal_id: str | None = None  # DB signal ID for traceability
 
 
-# Active setups keyed by symbol (e.g. "BTC/USDT" -> [ActiveSetup, ...])
+# Active setups keyed by "broker:symbol" to avoid cross-broker collisions
+# e.g. "binance:BTC/USDT" or "oanda:EUR_USD"
 _active_setups: dict[str, list[ActiveSetup]] = {}
+
+
+def _setup_key(symbol: str) -> str:
+    """Create a broker-namespaced key for setup tracking."""
+    broker = route_symbol(symbol).value
+    return f"{broker}:{symbol}"
 
 
 def _expire_setups(now: datetime) -> int:
     """Remove expired setups from all symbols. Returns count expired."""
     expired = 0
-    for symbol in list(_active_setups.keys()):
-        before = len(_active_setups[symbol])
-        _active_setups[symbol] = [
-            s for s in _active_setups[symbol] if now < s.expires_at
+    for key in list(_active_setups.keys()):
+        before = len(_active_setups[key])
+        _active_setups[key] = [
+            s for s in _active_setups[key] if now < s.expires_at
         ]
-        expired += before - len(_active_setups[symbol])
-        if not _active_setups[symbol]:
-            del _active_setups[symbol]
+        expired += before - len(_active_setups[key])
+        if not _active_setups[key]:
+            del _active_setups[key]
     return expired
 
 
 def _find_matching_setup(symbol: str, direction: SignalDirection) -> ActiveSetup | None:
     """Find an active 4h setup for the given symbol and direction."""
-    setups = _active_setups.get(symbol, [])
+    key = _setup_key(symbol)
+    setups = _active_setups.get(key, [])
     for setup in setups:
         if setup.direction == direction:
             return setup
@@ -156,8 +170,8 @@ def _build_confirmed_signal(
 # ---------------------------------------------------------------------------
 
 
-async def _seed_candle_cache(market: MarketDataClient, settings: Settings) -> None:
-    """Populate _last_candle_times from exchange so first cycle knows candle status.
+async def _seed_candle_cache(router: BrokerRouter, all_symbols: list[str], settings: Settings) -> None:
+    """Populate _last_candle_times from exchanges so first cycle knows candle status.
 
     Without this, every restart treats the first candle as "closed" (new timestamp)
     which could trigger false confidence boosts or reversal trades.
@@ -165,10 +179,11 @@ async def _seed_candle_cache(market: MarketDataClient, settings: Settings) -> No
     Fetches 1 candle per symbol/timeframe directly from the exchange — the same
     source the analysis cycle uses — so timestamps match exactly.
     """
-    for symbol in settings.symbols:
+    for symbol in all_symbols:
         for timeframe in settings.timeframes:
             try:
-                candles = await market.fetch_ohlcv(symbol, timeframe, limit=1)
+                broker = router.get_broker(symbol)
+                candles = await broker.fetch_ohlcv(symbol, timeframe, limit=1)
                 if candles:
                     key = f"{symbol}/{timeframe}"
                     _last_candle_times[key] = candles[-1].timestamp.isoformat()
@@ -194,6 +209,7 @@ async def _persist_signal(
     signal,
     validated: bool,
     validation_reason: str,
+    broker_id: str = "binance",
 ) -> str | None:
     """Save a detected signal to the database immediately. Returns signal ID."""
     try:
@@ -215,6 +231,7 @@ async def _persist_signal(
             json.dumps(signal.model_dump(mode="json")),
             validated,
             validation_reason,
+            broker_id,
         )
         return str(row["id"]) if row else None
     except Exception as e:
@@ -224,12 +241,13 @@ async def _persist_signal(
 
 async def analysis_cycle(
     settings: Settings,
-    market: MarketDataClient,
+    router: BrokerRouter,
     claude: ClaudeClient,
     engine: ExecutionEngine,
     risk: RiskManager,
     db: Database,
     telegram: TelegramClient,
+    all_symbols: list[str],
 ) -> AnalysisCycleResult:
     """Single analysis cycle: fetch -> compute -> analyse -> validate -> execute.
 
@@ -255,36 +273,48 @@ async def analysis_cycle(
         if active_count:
             logger.info(f"Multi-TF: {active_count} active setup(s) across {len(_active_setups)} symbol(s)")
 
-    # Get current portfolio state for risk checks
-    portfolio = await risk.get_portfolio_state()
+    # Get per-broker portfolio states and record snapshots
+    portfolio_cache: dict[str, object] = {}
+    for broker in router.all_brokers:
+        bid = broker.broker_id
+        portfolio = await risk.get_portfolio_state(broker_id=bid)
+        portfolio_cache[bid] = portfolio
 
-    # --- Record portfolio snapshot for equity curve ---
-    try:
-        from bot.database import queries as q
-        open_count = await db.pool.fetchval(q.COUNT_OPEN_ORDERS)
-        pnl_row = await db.pool.fetchrow(q.SELECT_DAILY_PNL)
-        daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
-        daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
-        await db.pool.execute(
-            q.INSERT_PORTFOLIO_SNAPSHOT,
-            portfolio.total_equity,
-            portfolio.available_balance,
-            open_count,
-            daily_pnl,
-            daily_trades,
-        )
-    except Exception as e:
-        logger.error(f"Failed to record portfolio snapshot: {e}")
+        # Record portfolio snapshot for equity curve
+        try:
+            from bot.database import queries as q
+            open_count = await db.pool.fetchval(q.COUNT_OPEN_ORDERS_BY_BROKER, bid)
+            pnl_row = await db.pool.fetchrow(q.SELECT_DAILY_PNL_BY_BROKER, bid)
+            daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
+            daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
+            await db.pool.execute(
+                q.INSERT_PORTFOLIO_SNAPSHOT,
+                portfolio.total_equity,
+                portfolio.available_balance,
+                open_count,
+                daily_pnl,
+                daily_trades,
+                bid,
+            )
+        except Exception as e:
+            logger.error(f"Failed to record portfolio snapshot for {bid}: {e}")
 
     # Track symbols traded this cycle to prevent duplicates
     traded_symbols: set[str] = set()
 
-    for symbol in settings.symbols:
+    for symbol in all_symbols:
+        broker = router.get_broker(symbol)
+        broker_id = broker.broker_id
+        portfolio = portfolio_cache[broker_id]
+
+        # Per-broker confidence threshold
+        min_confidence = settings.get_min_confidence(broker_id)
+
         for timeframe in settings.timeframes:
             candle_key = f"{symbol}/{timeframe}"
             try:
                 # --- Layer 1: Data Ingestion ---
-                candles = await market.fetch_ohlcv(symbol, timeframe)
+                candles = await broker.fetch_ohlcv(symbol, timeframe)
                 if len(candles) < settings.lookback_candles // 2:
                     logger.warning(
                         f"Insufficient candles for {symbol}/{timeframe}: "
@@ -337,9 +367,18 @@ async def analysis_cycle(
                 # --- Layer 2: Validation (deterministic, <1ms) ---
                 validation = validate_signal(signal, indicators, settings)
 
+                # Per-broker confidence check
+                if validation.passed and signal.confidence < min_confidence:
+                    validation = type(validation)(
+                        passed=False,
+                        reason=f"Confidence {signal.confidence:.2f} below {broker_id} threshold {min_confidence}",
+                    )
+
                 # Persist EVERY detected signal immediately (validated or not)
                 signal_id = await _persist_signal(
-                    db, signal, validation.passed, validation.reason or "All validation rules passed",
+                    db, signal, validation.passed,
+                    validation.reason or "All validation rules passed",
+                    broker_id=broker_id,
                 )
 
                 if not validation.passed:
@@ -362,7 +401,8 @@ async def analysis_cycle(
                             direction=signal.direction,
                             signal_id=signal_id,
                         )
-                        _active_setups.setdefault(symbol, []).append(setup)
+                        setup_key = _setup_key(symbol)
+                        _active_setups.setdefault(setup_key, []).append(setup)
                         logger.info(
                             f"Multi-TF: 4h setup CREATED for {symbol} "
                             f"({signal.direction.value} {signal.divergence_type}) — "
@@ -404,13 +444,16 @@ async def analysis_cycle(
                             continue
 
                         # Remove the consumed setup
-                        _active_setups[symbol].remove(matching_setup)
-                        if not _active_setups[symbol]:
-                            del _active_setups[symbol]
+                        setup_key = _setup_key(symbol)
+                        _active_setups[setup_key].remove(matching_setup)
+                        if not _active_setups[setup_key]:
+                            del _active_setups[setup_key]
 
                         # Persist the confirmed signal
                         confirmed_signal_id = await _persist_signal(
-                            db, confirmed, True, "Multi-TF confirmed (4h setup + 1h trigger)",
+                            db, confirmed, True,
+                            "Multi-TF confirmed (4h setup + 1h trigger)",
+                            broker_id=broker_id,
                         )
 
                         logger.info(
@@ -518,17 +561,34 @@ async def main() -> None:
             f"expiry={settings.setup_expiry_hours}h)"
         )
 
+    # Build broker router
+    router = BrokerRouter()
+
     # Initialise components
     db = Database(settings)
     await db.connect()
 
     market = MarketDataClient(settings)
+    router.register(market)
+
+    # Register OANDA if configured
+    if settings.oanda_enabled:
+        from bot.layer1_data.oanda_client import OandaClient
+        oanda = OandaClient(settings)
+        router.register(oanda)
+        logger.info(f"OANDA enabled: {settings.oanda_symbols}")
+    else:
+        logger.info("OANDA not configured — crypto-only mode")
+
+    # Combined symbol list
+    all_symbols = list(settings.symbols) + list(settings.oanda_symbols)
+
     claude = ClaudeClient(settings)
     risk = RiskManager(settings, db)
     telegram = TelegramClient(settings)
     sms = SMSClient(settings)
-    engine = ExecutionEngine(settings, db, market, risk, telegram, sms=sms)
-    health = HealthServer(settings, db, market, risk_manager=risk)
+    engine = ExecutionEngine(settings, db, router, risk, telegram, sms=sms)
+    health = HealthServer(settings, db, router=router, risk_manager=risk)
 
     # Start health check server (Fly.io needs this)
     await health.start()
@@ -539,16 +599,21 @@ async def main() -> None:
         if settings.use_multi_tf_confirmation
         else "Multi-TF: OFF"
     )
+    brokers_status = "Binance"
+    if settings.oanda_enabled:
+        brokers_status += f" + OANDA ({len(settings.oanda_symbols)} forex pairs)"
     startup_msg = (
         f"Bot Started | Mode: {settings.trading_mode.value} | "
-        f"Symbols: {', '.join(settings.symbols)} | "
+        f"Brokers: {brokers_status} | "
+        f"Symbols: {len(all_symbols)} | "
         f"Interval: {settings.analysis_interval_minutes}min | "
         f"{multi_tf_status}"
     )
     await telegram.send(
         f"<b>Bot Started</b>\n"
         f"Mode: {settings.trading_mode.value}\n"
-        f"Symbols: {', '.join(settings.symbols)}\n"
+        f"Brokers: {brokers_status}\n"
+        f"Symbols: {len(all_symbols)} ({', '.join(all_symbols[:5])}{'...' if len(all_symbols) > 5 else ''})\n"
         f"Interval: {settings.analysis_interval_minutes}min\n"
         f"{multi_tf_status}"
     )
@@ -560,7 +625,7 @@ async def main() -> None:
         analysis_cycle,
         "interval",
         minutes=settings.analysis_interval_minutes,
-        args=[settings, market, claude, engine, risk, db, telegram],
+        args=[settings, router, claude, engine, risk, db, telegram, all_symbols],
         id="analysis_cycle",
         name="Divergence Analysis",
         max_instances=1,
@@ -582,7 +647,7 @@ async def main() -> None:
         track_signal_outcomes,
         "interval",
         minutes=5,
-        args=[db, market],
+        args=[db, router],
         id="outcome_tracker",
         name="Signal Outcome Tracker",
         max_instances=1,
@@ -591,16 +656,16 @@ async def main() -> None:
     scheduler.start()
     logger.info(f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, SL/TP monitor: every 2min, outcomes: every 5min)")
 
-    # Seed candle dedup cache from exchange so deploy doesn't re-trigger existing positions
-    await _seed_candle_cache(market, settings)
+    # Seed candle dedup cache from exchanges so deploy doesn't re-trigger existing positions
+    await _seed_candle_cache(router, all_symbols, settings)
 
     # Run first cycle immediately
     logger.info("Running initial analysis cycle...")
-    await analysis_cycle(settings, market, claude, engine, risk, db, telegram)
+    await analysis_cycle(settings, router, claude, engine, risk, db, telegram, all_symbols)
 
     # Run outcome tracker once on startup to catch up
     logger.info("Running initial outcome tracker...")
-    await track_signal_outcomes(db, market)
+    await track_signal_outcomes(db, router)
 
     # Graceful shutdown handling
     stop_event = asyncio.Event()
@@ -620,7 +685,7 @@ async def main() -> None:
     logger.info("Shutting down...")
     scheduler.shutdown(wait=False)
     await health.stop()
-    await market.close()
+    await router.close_all()
     await telegram.send("<b>Bot Stopped</b>\nGraceful shutdown complete.")
     await sms.send("Bot stopped. Graceful shutdown complete.")
     await telegram.close()

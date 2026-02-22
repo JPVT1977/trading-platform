@@ -1,5 +1,6 @@
 # Exchange & market data
 ccxt>=4.4.0
+oandapyV20>=0.7.2
 
 # Technical analysis (requires system TA-Lib: brew install ta-lib)
 TA-Lib>=0.6.0
@@ -36,3 +37,5 @@ websockets>=14.0
 
 # Data processing
 numpy>=2.2.0
+pandas>=2.2.0
+matplotlib>=3.9.0

@@ -9,6 +9,7 @@ from loguru import logger
 from bot.config import Settings, TradingMode
 from bot.database import queries
 from bot.database.connection import Database
+from bot.instruments import is_forex, route_symbol
 from bot.layer3_execution.order_state import OrderStateMachine
 from bot.models import (
     DivergenceSignal,
@@ -18,7 +19,7 @@ from bot.models import (
 )
 
 if TYPE_CHECKING:
-    from bot.layer1_data.market_data import MarketDataClient
+    from bot.layer1_data.broker_router import BrokerRouter
     from bot.layer4_risk.manager import RiskManager
     from bot.layer5_monitoring.sms import SMSClient
     from bot.layer5_monitoring.telegram import TelegramClient
@@ -35,14 +36,14 @@ class ExecutionEngine:
         self,
         settings: Settings,
         db: Database,
-        market_client: MarketDataClient,
+        router: BrokerRouter,
         risk_manager: RiskManager,
         telegram: TelegramClient,
         sms: SMSClient | None = None,
     ) -> None:
         self._settings = settings
         self._db = db
-        self._market = market_client
+        self._router = router
         self._risk = risk_manager
         self._telegram = telegram
         self._sms = sms
@@ -61,8 +62,11 @@ class ExecutionEngine:
         6. Alert notification
         """
 
-        # Step 1: Risk check
-        risk_result = self._risk.check_entry(signal, portfolio)
+        broker = self._router.get_broker(signal.symbol)
+        broker_id = broker.broker_id
+
+        # Step 1: Risk check (per-broker limits)
+        risk_result = self._risk.check_entry(signal, portfolio, broker_id=broker_id)
         if not risk_result.approved:
             logger.warning(f"Risk rejected {signal.symbol}: {risk_result.reason}")
             return None
@@ -100,8 +104,8 @@ class ExecutionEngine:
 
         try:
             if self._settings.trading_mode == TradingMode.LIVE:
-                # Place entry order
-                exchange_result = await self._market.create_limit_order(
+                # Place entry order via broker router
+                exchange_result = await broker.create_limit_order(
                     symbol=order.symbol,
                     side=side,
                     amount=order.quantity,
@@ -111,7 +115,7 @@ class ExecutionEngine:
 
                 # Place stop loss
                 sl_side = "sell" if side == "buy" else "buy"
-                await self._market.create_stop_order(
+                await broker.create_stop_order(
                     symbol=order.symbol,
                     side=sl_side,
                     amount=order.quantity,
@@ -119,7 +123,7 @@ class ExecutionEngine:
                 )
 
             elif self._settings.trading_mode == TradingMode.PAPER:
-                order.exchange_order_id = f"paper-{signal.symbol}-{signal.timeframe}-{int(time_mod.time())}"
+                order.exchange_order_id = f"paper-{broker_id}-{signal.symbol}-{signal.timeframe}-{int(time_mod.time())}"
                 logger.info(
                     f"PAPER TRADE: {side} {order.quantity:.6f} {order.symbol} "
                     f"@ {order.entry_price} | SL: {order.stop_loss} | TP1: {order.take_profit_1}"
@@ -140,7 +144,7 @@ class ExecutionEngine:
             # Persist the failed order for auditing, then return None
             try:
                 order.signal_id = signal_id
-                await self._persist_order(order)
+                await self._persist_order(order, broker_id)
             except Exception as persist_err:
                 logger.error(f"Failed to persist error order: {persist_err}")
             return None
@@ -148,7 +152,7 @@ class ExecutionEngine:
         # Step 5: Persist order to database (signal already persisted by caller)
         try:
             order.signal_id = signal_id
-            order_id = await self._persist_order(order)
+            order_id = await self._persist_order(order, broker_id)
             order.id = order_id
         except Exception as e:
             logger.error(f"Failed to persist order to database: {e}")
@@ -161,7 +165,7 @@ class ExecutionEngine:
         logger.info(
             f"Order executed: {order.symbol} {order.direction.value} "
             f"qty={order.quantity:.6f} entry={order.entry_price} "
-            f"state={order.state.value}"
+            f"state={order.state.value} broker={broker_id}"
         )
 
         return order
@@ -170,7 +174,7 @@ class ExecutionEngine:
         """Check all open positions against current market price.
 
         For each open position:
-        - Fetch current price from exchange
+        - Fetch current price from the correct broker
         - If price hit stop loss → close with loss
         - If price hit TP1 → close with profit
         - Also simulate fill: mark submitted orders as filled at entry price
@@ -190,7 +194,8 @@ class ExecutionEngine:
         tickers: dict[str, float] = {}
         for symbol in symbols:
             try:
-                ticker = await self._market.fetch_ticker(symbol)
+                broker = self._router.get_broker(symbol)
+                ticker = await broker.fetch_ticker(symbol)
                 tickers[symbol] = float(ticker["last"])
             except Exception as e:
                 logger.warning(f"Failed to fetch ticker for {symbol}: {e}")
@@ -243,8 +248,11 @@ class ExecutionEngine:
             else:
                 pnl = (entry_price - exit_price) * quantity
 
-            # Simulate fees (0.1% round trip — entry + exit)
-            fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
+            # Forex fees = 0 (spread-based), crypto fees = 0.1% round trip
+            if is_forex(symbol):
+                fees = 0.0
+            else:
+                fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
 
             pnl_net = pnl - fees
             reason = "STOP LOSS" if hit_sl else "TAKE PROFIT"
@@ -297,9 +305,10 @@ class ExecutionEngine:
         quantity = float(row["quantity"])
         direction = row["direction"]
 
-        # Get current market price for P&L calculation
+        # Get current market price for P&L calculation via correct broker
         try:
-            ticker = await self._market.fetch_ticker(symbol)
+            broker = self._router.get_broker(symbol)
+            ticker = await broker.fetch_ticker(symbol)
             exit_price = float(ticker["last"])
         except Exception as e:
             logger.error(f"Reversal: failed to fetch price for {symbol}: {e}")
@@ -310,7 +319,11 @@ class ExecutionEngine:
             pnl = (exit_price - entry_price) * quantity
         else:
             pnl = (entry_price - exit_price) * quantity
-        fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
+
+        if is_forex(symbol):
+            fees = 0.0
+        else:
+            fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
         pnl_net = pnl - fees
 
         # Close the order
@@ -346,6 +359,7 @@ class ExecutionEngine:
     async def _persist_signal(self, signal: DivergenceSignal) -> str | None:
         """Save the signal to the database and return its ID."""
         try:
+            broker_id = route_symbol(signal.symbol).value
             pool = self._db.pool
             row = await pool.fetchrow(
                 queries.INSERT_SIGNAL,
@@ -364,13 +378,14 @@ class ExecutionEngine:
                 json.dumps(signal.model_dump(mode="json")),
                 True,  # validated
                 "All validation rules passed",
+                broker_id,
             )
             return str(row["id"]) if row else None
         except Exception as e:
             logger.error(f"Failed to persist signal: {e}")
             return None
 
-    async def _persist_order(self, order: TradeOrder) -> str | None:
+    async def _persist_order(self, order: TradeOrder, broker_id: str = "binance") -> str | None:
         """Save the order to the database and return its ID."""
         try:
             pool = self._db.pool
@@ -387,6 +402,7 @@ class ExecutionEngine:
                 order.take_profit_2,
                 order.take_profit_3,
                 order.quantity,
+                broker_id,
             )
             return str(row["id"]) if row else None
         except Exception as e:

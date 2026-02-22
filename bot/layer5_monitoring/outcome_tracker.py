@@ -9,12 +9,15 @@ Runs every 5 minutes via APScheduler:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from bot.database import queries as q
 from bot.database.connection import Database
-from bot.layer1_data.market_data import MarketDataClient
+
+if TYPE_CHECKING:
+    from bot.layer1_data.broker_router import BrokerRouter
 
 # Verdict thresholds (24h return %)
 CORRECT_THRESHOLD = 0.5   # above +0.5% = correct
@@ -28,11 +31,11 @@ def _ensure_utc(dt: datetime) -> datetime:
     return dt
 
 
-async def track_signal_outcomes(db: Database, market: MarketDataClient) -> None:
+async def track_signal_outcomes(db: Database, router: BrokerRouter) -> None:
     """Main entry point — called by APScheduler every 5 minutes."""
     try:
         created = await _create_missing_outcomes(db)
-        updated = await _update_unresolved_outcomes(db, market)
+        updated = await _update_unresolved_outcomes(db, router)
         if created or updated:
             logger.info(f"Outcome tracker: created={created}, updated={updated}")
     except Exception as e:
@@ -57,7 +60,7 @@ async def _create_missing_outcomes(db: Database) -> int:
     return count
 
 
-async def _update_unresolved_outcomes(db: Database, market: MarketDataClient) -> int:
+async def _update_unresolved_outcomes(db: Database, router: BrokerRouter) -> int:
     """Update all unresolved outcomes with checkpoint prices and verdicts."""
     rows = await db.pool.fetch(q.SELECT_UNRESOLVED_OUTCOMES)
     if not rows:
@@ -78,7 +81,8 @@ async def _update_unresolved_outcomes(db: Database, market: MarketDataClient) ->
         candle_limit = min(hours_needed, 500)
 
         try:
-            candles = await market.fetch_ohlcv(symbol, "1h", limit=candle_limit)
+            broker = router.get_broker(symbol)
+            candles = await broker.fetch_ohlcv(symbol, "1h", limit=candle_limit)
         except Exception as e:
             logger.warning(f"Failed to fetch candles for {symbol}: {e}")
             continue

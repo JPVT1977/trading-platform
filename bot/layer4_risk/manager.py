@@ -7,6 +7,7 @@ from loguru import logger
 from bot.config import Settings, TradingMode
 from bot.database.connection import Database
 from bot.database import queries
+from bot.instruments import get_instrument, is_forex, route_symbol
 from bot.models import (
     DivergenceSignal,
     OrderState,
@@ -32,9 +33,13 @@ class RiskManager:
         self._drawdown_breaker_reason: str | None = None
 
     def check_entry(
-        self, signal: DivergenceSignal, portfolio: PortfolioState
+        self, signal: DivergenceSignal, portfolio: PortfolioState,
+        broker_id: str = "binance",
     ) -> RiskCheckResult:
         """Run all risk checks before allowing a trade entry.
+
+        Risk limits are applied per-broker so crypto positions don't block
+        forex trades and vice versa.
 
         Returns approved=True if the trade can proceed.
         Returns reason="REVERSAL:..." if an existing position must be closed first.
@@ -90,33 +95,45 @@ class RiskManager:
                         reason=f"Already {p.direction.value if hasattr(p.direction, 'value') else p.direction} on {signal.symbol}",
                     )
 
-        # Check 4: Max open positions
+        # Per-broker limits
+        max_positions = self._settings.get_max_open_positions(broker_id)
+        max_correlation = self._settings.get_max_correlation_exposure(broker_id)
+
+        # Check 4: Max open positions (per-broker)
         open_count = sum(1 for p in portfolio.open_positions if p.state in active_states)
-        if open_count >= self._settings.max_open_positions:
+        if open_count >= max_positions:
             return RiskCheckResult(
                 approved=False,
-                reason=f"Max open positions ({self._settings.max_open_positions}) reached ({open_count} open)",
+                reason=f"Max open positions ({max_positions}) reached for {broker_id} ({open_count} open)",
             )
 
-        # Check 5: Correlation exposure (same-direction positions)
+        # Check 5: Correlation exposure — same-direction positions (per-broker)
         if signal.direction is not None:
             same_direction_count = sum(
                 1 for p in portfolio.open_positions
                 if p.state in active_states and p.direction == signal.direction
             )
-            if same_direction_count >= self._settings.max_correlation_exposure:
+            if same_direction_count >= max_correlation:
                 return RiskCheckResult(
                     approved=False,
                     reason=(
                         f"Correlation limit: {same_direction_count} "
                         f"{signal.direction.value} positions already open "
-                        f"(max {self._settings.max_correlation_exposure})"
+                        f"(max {max_correlation} for {broker_id})"
                     ),
                 )
 
         return RiskCheckResult(approved=True, reason="All risk checks passed")
 
     def calculate_position_size(
+        self, signal: DivergenceSignal, portfolio: PortfolioState
+    ) -> float:
+        """Dispatch to crypto or forex sizing based on symbol."""
+        if is_forex(signal.symbol):
+            return self._calculate_forex_position_size(signal, portfolio)
+        return self._calculate_crypto_position_size(signal, portfolio)
+
+    def _calculate_crypto_position_size(
         self, signal: DivergenceSignal, portfolio: PortfolioState
     ) -> float:
         """ATR-based position sizing. Risk max_position_pct per trade.
@@ -149,21 +166,67 @@ class RiskManager:
 
         return position_size
 
-    async def get_portfolio_state(self) -> PortfolioState:
-        """Build current portfolio state from database."""
+    def _calculate_forex_position_size(
+        self, signal: DivergenceSignal, portfolio: PortfolioState
+    ) -> float:
+        """Pip-based forex position sizing.
+
+        units = risk_amount / (stop_distance_pips * pip_value_per_unit)
+        Capped at 30:1 leverage.
+        """
+        if signal.entry_price is None or signal.stop_loss is None:
+            return 0.0
+
+        instrument = get_instrument(signal.symbol)
+
+        # Risk amount = percentage of total equity
+        risk_amount = portfolio.total_equity * (self._settings.max_position_pct / 100)
+
+        # Stop distance in pips
+        stop_distance = abs(signal.entry_price - signal.stop_loss)
+        stop_pips = stop_distance / instrument.pip_size
+        if stop_pips == 0:
+            return 0.0
+
+        # Units = risk_amount / (stop_pips * pip_value_per_unit)
+        units = risk_amount / (stop_pips * instrument.pip_value_per_unit)
+
+        # Cap at max leverage (30:1 for forex)
+        max_units = (portfolio.total_equity * instrument.max_leverage) / signal.entry_price
+        units = min(units, max_units)
+
+        # Round to whole units (OANDA accepts fractional but whole is cleaner)
+        units = int(units)
+
+        logger.debug(
+            f"Forex position size: {units} units "
+            f"(risk=${risk_amount:.2f}, stop={stop_pips:.1f} pips, "
+            f"pip_val={instrument.pip_value_per_unit})"
+        )
+
+        return float(units)
+
+    async def get_portfolio_state(self, broker_id: str = "binance") -> PortfolioState:
+        """Build current portfolio state from database, scoped to a single broker."""
         if not self._db:
             return PortfolioState(total_equity=0, available_balance=0)
 
         pool = self._db.pool
 
-        # Get cumulative realized P&L for dynamic equity
-        cumulative_pnl = float(
-            await pool.fetchval(queries.SELECT_CUMULATIVE_PNL) or 0.0
-        )
-        total_equity = STARTING_EQUITY + cumulative_pnl
+        # Determine starting equity for this broker
+        if broker_id == "oanda":
+            starting_eq = self._settings.oanda_starting_equity
+        else:
+            starting_eq = STARTING_EQUITY
 
-        # Get open orders
-        rows = await pool.fetch(queries.SELECT_OPEN_ORDERS)
+        # Get cumulative realized P&L for this broker
+        cumulative_pnl = float(
+            await pool.fetchval(queries.SELECT_CUMULATIVE_PNL_BY_BROKER, broker_id) or 0.0
+        )
+        total_equity = starting_eq + cumulative_pnl
+
+        # Get open orders for this broker only
+        rows = await pool.fetch(queries.SELECT_OPEN_ORDERS_BY_BROKER, broker_id)
         open_positions = [
             TradeOrder(
                 id=str(r["id"]),
@@ -185,13 +248,13 @@ class RiskManager:
             for r in rows
         ]
 
-        # Get daily P&L
-        pnl_row = await pool.fetchrow(queries.SELECT_DAILY_PNL)
+        # Get daily P&L for this broker
+        pnl_row = await pool.fetchrow(queries.SELECT_DAILY_PNL_BY_BROKER, broker_id)
         daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
         daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
 
         # Check max drawdown against peak equity
-        await self.check_max_drawdown(total_equity)
+        await self._check_max_drawdown_for_broker(total_equity, starting_eq, broker_id)
 
         return PortfolioState(
             total_equity=total_equity,
@@ -201,32 +264,30 @@ class RiskManager:
             daily_trades=daily_trades,
         )
 
-    async def check_max_drawdown(self, current_equity: float) -> None:
-        """Check peak-to-trough drawdown. Trips persistent kill switch if exceeded.
-
-        Unlike the daily circuit breaker, this does NOT auto-reset.
-        Requires manual override via reset_drawdown_breaker().
-        """
+    async def _check_max_drawdown_for_broker(
+        self, current_equity: float, starting_eq: float, broker_id: str
+    ) -> None:
+        """Check peak-to-trough drawdown for a specific broker."""
         if self._drawdown_breaker_active or not self._db:
             return
 
         try:
             peak_equity = float(
-                await self._db.pool.fetchval(queries.SELECT_PEAK_EQUITY) or STARTING_EQUITY
+                await self._db.pool.fetchval(
+                    queries.SELECT_PEAK_EQUITY_BY_BROKER, broker_id
+                ) or starting_eq
             )
-            # Use at least STARTING_EQUITY as peak floor
-            peak_equity = max(peak_equity, STARTING_EQUITY)
+            peak_equity = max(peak_equity, starting_eq)
 
             if peak_equity > 0 and current_equity < peak_equity:
                 drawdown_pct = (peak_equity - current_equity) / peak_equity * 100
                 if drawdown_pct >= self._settings.max_drawdown_pct:
                     self._drawdown_breaker_active = True
                     self._drawdown_breaker_reason = (
-                        f"Equity ${current_equity:.2f} is {drawdown_pct:.1f}% below "
+                        f"[{broker_id}] Equity ${current_equity:.2f} is {drawdown_pct:.1f}% below "
                         f"peak ${peak_equity:.2f} (limit: {self._settings.max_drawdown_pct}%)"
                     )
                     logger.critical(f"DRAWDOWN KILL SWITCH TRIPPED: {self._drawdown_breaker_reason}")
-                    # Persist as circuit breaker event for audit trail
                     try:
                         await self._db.pool.execute(
                             queries.INSERT_CIRCUIT_BREAKER_EVENT,
@@ -236,7 +297,11 @@ class RiskManager:
                     except Exception:
                         pass
         except Exception as e:
-            logger.error(f"Drawdown check failed: {e}")
+            logger.error(f"Drawdown check failed for {broker_id}: {e}")
+
+    async def check_max_drawdown(self, current_equity: float) -> None:
+        """Legacy method — checks drawdown using global starting equity."""
+        await self._check_max_drawdown_for_broker(current_equity, STARTING_EQUITY, "binance")
 
     def _trip_circuit_breaker(self, reason: str) -> None:
         """Activate the daily circuit breaker — halt all trading until midnight UTC."""
