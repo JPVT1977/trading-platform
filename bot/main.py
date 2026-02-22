@@ -40,30 +40,28 @@ from bot.models import AnalysisCycleResult
 _last_candle_times: dict[str, str] = {}
 
 
-async def _seed_candle_cache(db: Database, settings: Settings) -> None:
-    """Populate _last_candle_times from database so deploys don't re-trigger Claude.
+async def _seed_candle_cache(market: MarketDataClient, settings: Settings) -> None:
+    """Populate _last_candle_times from exchange so deploys don't re-trigger Claude.
 
     Without this, every restart wipes the in-memory dedup cache, causing Claude
     to re-analyze every symbol and potentially trigger reversal trades on existing
     positions that haven't actually changed.
+
+    Fetches 1 candle per symbol/timeframe directly from the exchange — the same
+    source the analysis cycle uses — so timestamps match exactly.
     """
     for symbol in settings.symbols:
         for timeframe in settings.timeframes:
             try:
-                row = await db.pool.fetchrow(
-                    "SELECT time FROM candles WHERE symbol = $1 AND timeframe = $2 "
-                    "ORDER BY time DESC LIMIT 1",
-                    symbol, timeframe,
-                )
-                if row:
+                candles = await market.fetch_ohlcv(symbol, timeframe, limit=1)
+                if candles:
                     key = f"{symbol}/{timeframe}"
-                    _last_candle_times[key] = row["time"].isoformat()
-                    logger.debug(f"Seeded candle cache: {key} = {row['time'].isoformat()}")
+                    _last_candle_times[key] = candles[-1].timestamp.isoformat()
+                    logger.info(f"Candle cache seeded: {key} = {candles[-1].timestamp.isoformat()}")
             except Exception as e:
                 logger.warning(f"Failed to seed candle cache for {symbol}/{timeframe}: {e}")
 
-    if _last_candle_times:
-        logger.info(f"Candle cache seeded with {len(_last_candle_times)} entries (deploys won't re-trigger)")
+    logger.info(f"Candle cache seeded with {len(_last_candle_times)} entries — deploy won't re-trigger trades")
 
 
 async def position_monitor(engine: ExecutionEngine) -> None:
@@ -357,8 +355,8 @@ async def main() -> None:
     scheduler.start()
     logger.info(f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, SL/TP monitor: every 2min, outcomes: every 5min)")
 
-    # Seed candle dedup cache from DB so deploy doesn't re-trigger existing positions
-    await _seed_candle_cache(db, settings)
+    # Seed candle dedup cache from exchange so deploy doesn't re-trigger existing positions
+    await _seed_candle_cache(market, settings)
 
     # Run first cycle immediately
     logger.info("Running initial analysis cycle...")
