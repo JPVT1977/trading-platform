@@ -47,6 +47,8 @@ def build_analysis_payload(
                 "k": _trim(indicators.stoch_k, n),
                 "d": _trim(indicators.stoch_d, n),
             },
+            "cci": _trim(indicators.cci, n),
+            "williams_r": _trim(indicators.williams_r, n),
             "atr": _trim(indicators.atr, n),
             "ema": {
                 "short": _trim(indicators.ema_short, n),

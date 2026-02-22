@@ -82,7 +82,7 @@ class TestRiskChecks:
         )
         result = risk_manager.check_entry(signal, portfolio)
         assert result.approved is False
-        assert "open position" in result.reason.lower()
+        assert "already" in result.reason.lower()
 
     def test_rejects_correlation_limit(self, risk_manager):
         # Two long positions already open

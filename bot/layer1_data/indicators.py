@@ -54,6 +54,12 @@ def compute_indicators(
         slowd_matype=0,
     )
 
+    # Commodity Channel Index
+    cci = talib.CCI(highs, lows, closes, timeperiod=settings.cci_period)
+
+    # Williams %R
+    williams_r = talib.WILLR(highs, lows, closes, timeperiod=settings.williams_r_period)
+
     # Average True Range
     atr = talib.ATR(highs, lows, closes, timeperiod=settings.atr_period)
 
@@ -74,6 +80,8 @@ def compute_indicators(
         mfi=_nan_to_none(mfi),
         stoch_k=_nan_to_none(stoch_k),
         stoch_d=_nan_to_none(stoch_d),
+        cci=_nan_to_none(cci),
+        williams_r=_nan_to_none(williams_r),
         atr=_nan_to_none(atr),
         ema_short=_nan_to_none(ema_short),
         ema_medium=_nan_to_none(ema_medium),

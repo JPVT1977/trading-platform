@@ -121,6 +121,11 @@ SELECT_DAILY_PNL = """
       AND closed_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
 """
 
+SELECT_PEAK_EQUITY = """
+    SELECT COALESCE(MAX(total_equity), 0) as peak_equity
+    FROM portfolio_snapshots
+"""
+
 # ---------------------------------------------------------------------------
 # Circuit Breaker
 # ---------------------------------------------------------------------------

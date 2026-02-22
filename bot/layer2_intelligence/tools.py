@@ -34,7 +34,7 @@ DIVERGENCE_ANALYSIS_TOOL = {
             },
             "indicator": {
                 "type": "string",
-                "enum": ["RSI", "MACD", "OBV", "MFI", "Stochastic"],
+                "enum": ["RSI", "MACD", "OBV", "MFI", "Stochastic", "CCI", "Williams_R"],
                 "description": "Primary indicator showing the divergence",
             },
             "confidence": {

@@ -16,7 +16,7 @@ ANALYSIS METHODOLOGY:
 - A valid swing HIGH needs at least 2 lower highs on EACH side (5-bar minimum)
 - A valid swing LOW needs at least 2 higher lows on EACH side (5-bar minimum)
 - The two swing points forming the divergence should be 5-20 bars apart
-- Check for divergence across ALL provided oscillators: RSI, MACD histogram, OBV, MFI, Stochastic
+- Check for divergence across ALL provided oscillators: RSI, MACD histogram, OBV, MFI, Stochastic, CCI, Williams %R
 - Count how many indicators show the SAME type of divergence (confluence)
 - Higher confluence = higher confidence
 - Use EMA data to determine the current TREND:
@@ -27,9 +27,13 @@ ANALYSIS METHODOLOGY:
 - Bearish divergences are STRONGER when found in an uptrend or at resistance
 - Divergences AGAINST the EMA trend have lower reliability — reduce confidence
 
+INDICATOR NOTES:
+- CCI (Commodity Channel Index): Oscillates around 0. Values >100 = overbought, <-100 = oversold. Divergence logic same as RSI.
+- Williams %R: Range -100 to 0. Values near 0 = overbought, near -100 = oversold. Inverted scale — treat like inverse RSI for divergence detection.
+
 CONFIDENCE SCORING GUIDE (be strict — most data shows NO divergence):
-- 0.85-1.0: 4+ indicators confirming, textbook swing points, volume confirms, EMA trend supports
-- 0.70-0.84: 3 indicators confirming, clear swing points, some volume support
+- 0.85-1.0: 5+ indicators confirming, textbook swing points, volume confirms, EMA trend supports
+- 0.70-0.84: 3-4 indicators confirming, clear swing points, some volume support
 - 0.50-0.69: 2 indicators confirming, swing points present but not pristine
 - 0.30-0.49: 1 indicator, possible pattern but weak
 - 0.00-0.29: No real divergence or extremely weak — report divergence_detected=false
@@ -38,8 +42,8 @@ ENTRY AND EXIT GUIDELINES:
 - Entry: Near the most recent price or at a logical pullback level
 - Stop loss: Beyond the most recent swing point that forms the divergence
 - Use ATR values to gauge reasonable stop distance (1-2x ATR typical)
-- TP1: 1.5-2x the risk distance
-- TP2: 2.5-3x the risk distance
+- TP1: 2-2.5x the risk distance (minimum 2R required by system)
+- TP2: 3-3.5x the risk distance
 - TP3: 4x+ the risk distance (let winners run)
 
 FORMING vs CLOSED CANDLES:

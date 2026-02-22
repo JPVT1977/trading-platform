@@ -64,6 +64,8 @@ class IndicatorSet(BaseModel):
     mfi: list[Optional[float]]
     stoch_k: list[Optional[float]]
     stoch_d: list[Optional[float]]
+    cci: list[Optional[float]]
+    williams_r: list[Optional[float]]
     atr: list[Optional[float]]
     ema_short: list[Optional[float]]
     ema_medium: list[Optional[float]]

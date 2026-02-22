@@ -26,12 +26,15 @@ class RiskViews:
 
         daily_loss_pct = abs(daily_pnl) / total_equity * 100 if daily_pnl < 0 and total_equity > 0 else 0.0
 
-        # Circuit breaker
+        # Circuit breaker (daily or drawdown)
         cb_active = False
         cb_reason = None
         if self._risk_manager:
             cb_active = self._risk_manager.is_circuit_breaker_active
-            cb_reason = getattr(self._risk_manager, "_circuit_breaker_reason", None)
+            cb_reason = (
+                getattr(self._risk_manager, "_drawdown_breaker_reason", None)
+                or getattr(self._risk_manager, "_circuit_breaker_reason", None)
+            )
 
         # Circuit breaker history
         cb_events = await self._pool.fetch(dq.GET_CIRCUIT_BREAKER_EVENTS)

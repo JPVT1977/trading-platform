@@ -282,6 +282,8 @@ def _make_indicators(
         mfi=[50.0] * n,
         stoch_k=[50.0] * n,
         stoch_d=[50.0] * n,
+        cci=[0.0] * n,
+        williams_r=[-50.0] * n,
         atr=[atr_last] * n,
         ema_short=[42000.0] * n,
         ema_medium=[41800.0] * n,

@@ -27,6 +27,9 @@ class RiskManager:
         self._circuit_breaker_active = False
         self._circuit_breaker_reason: str | None = None
         self._circuit_breaker_tripped_date: str | None = None
+        # Persistent drawdown breaker — survives daily reset, requires manual override
+        self._drawdown_breaker_active = False
+        self._drawdown_breaker_reason: str | None = None
 
     def check_entry(
         self, signal: DivergenceSignal, portfolio: PortfolioState
@@ -43,11 +46,18 @@ class RiskManager:
             logger.info("Circuit breaker auto-reset (new trading day)")
             self.reset_circuit_breaker()
 
-        # Check 1: Circuit breaker
+        # Check 1a: Circuit breaker (daily — auto-resets)
         if self._circuit_breaker_active:
             return RiskCheckResult(
                 approved=False,
                 reason=f"Circuit breaker active: {self._circuit_breaker_reason}",
+            )
+
+        # Check 1b: Max drawdown kill switch (persistent — requires manual override)
+        if self._drawdown_breaker_active:
+            return RiskCheckResult(
+                approved=False,
+                reason=f"DRAWDOWN KILL SWITCH: {self._drawdown_breaker_reason}",
             )
 
         # Check 2: Daily loss limit
@@ -180,6 +190,9 @@ class RiskManager:
         daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
         daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
 
+        # Check max drawdown against peak equity
+        await self.check_max_drawdown(total_equity)
+
         return PortfolioState(
             total_equity=total_equity,
             available_balance=total_equity,
@@ -188,20 +201,67 @@ class RiskManager:
             daily_trades=daily_trades,
         )
 
+    async def check_max_drawdown(self, current_equity: float) -> None:
+        """Check peak-to-trough drawdown. Trips persistent kill switch if exceeded.
+
+        Unlike the daily circuit breaker, this does NOT auto-reset.
+        Requires manual override via reset_drawdown_breaker().
+        """
+        if self._drawdown_breaker_active or not self._db:
+            return
+
+        try:
+            peak_equity = float(
+                await self._db.pool.fetchval(queries.SELECT_PEAK_EQUITY) or STARTING_EQUITY
+            )
+            # Use at least STARTING_EQUITY as peak floor
+            peak_equity = max(peak_equity, STARTING_EQUITY)
+
+            if peak_equity > 0 and current_equity < peak_equity:
+                drawdown_pct = (peak_equity - current_equity) / peak_equity * 100
+                if drawdown_pct >= self._settings.max_drawdown_pct:
+                    self._drawdown_breaker_active = True
+                    self._drawdown_breaker_reason = (
+                        f"Equity ${current_equity:.2f} is {drawdown_pct:.1f}% below "
+                        f"peak ${peak_equity:.2f} (limit: {self._settings.max_drawdown_pct}%)"
+                    )
+                    logger.critical(f"DRAWDOWN KILL SWITCH TRIPPED: {self._drawdown_breaker_reason}")
+                    # Persist as circuit breaker event for audit trail
+                    try:
+                        await self._db.pool.execute(
+                            queries.INSERT_CIRCUIT_BREAKER_EVENT,
+                            f"MAX DRAWDOWN: {self._drawdown_breaker_reason}",
+                            None,
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Drawdown check failed: {e}")
+
     def _trip_circuit_breaker(self, reason: str) -> None:
-        """Activate the circuit breaker — halt all trading."""
+        """Activate the daily circuit breaker — halt all trading until midnight UTC."""
         self._circuit_breaker_active = True
         self._circuit_breaker_reason = reason
         self._circuit_breaker_tripped_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         logger.critical(f"CIRCUIT BREAKER TRIPPED: {reason}")
 
     def reset_circuit_breaker(self) -> None:
-        """Reset the circuit breaker."""
+        """Reset the daily circuit breaker."""
         self._circuit_breaker_active = False
         self._circuit_breaker_reason = None
         self._circuit_breaker_tripped_date = None
         logger.warning("Circuit breaker reset")
 
+    def reset_drawdown_breaker(self) -> None:
+        """Manual override to reset the drawdown kill switch."""
+        self._drawdown_breaker_active = False
+        self._drawdown_breaker_reason = None
+        logger.warning("DRAWDOWN KILL SWITCH manually reset")
+
     @property
     def is_circuit_breaker_active(self) -> bool:
-        return self._circuit_breaker_active
+        return self._circuit_breaker_active or self._drawdown_breaker_active
+
+    @property
+    def is_drawdown_breaker_active(self) -> bool:
+        return self._drawdown_breaker_active

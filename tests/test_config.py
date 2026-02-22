@@ -13,9 +13,12 @@ def test_default_settings():
     assert s.exchange_id == "bybit"
     assert s.exchange_sandbox is True
     assert s.max_position_pct == 2.0
-    assert s.max_open_positions == 3
-    assert s.min_risk_reward == 1.5
-    assert s.analysis_interval_minutes == 15
+    assert s.max_open_positions == 6
+    assert s.min_risk_reward == 2.0
+    assert s.analysis_interval_minutes == 1
+    assert s.max_drawdown_pct == 15.0
+    assert s.cci_period == 20
+    assert s.williams_r_period == 14
 
 
 def test_trading_mode_normalisation():

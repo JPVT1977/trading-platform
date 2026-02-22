@@ -30,7 +30,10 @@ class Settings(BaseSettings):
     exchange_sandbox: bool = True
 
     # --- Symbols & Timeframes ---
-    symbols: list[str] = Field(default=["BTC/USDT", "ETH/USDT"])
+    symbols: list[str] = Field(default=[
+        "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+        "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT",
+    ])
     timeframes: list[str] = Field(default=["1h", "4h"])
 
     # --- Claude API ---
@@ -63,10 +66,11 @@ class Settings(BaseSettings):
     # --- Risk Management ---
     max_position_pct: float = 2.0
     max_daily_loss_pct: float = 5.0
-    max_open_positions: int = 3
-    max_correlation_exposure: int = 3
-    min_risk_reward: float = 1.5
+    max_open_positions: int = 6
+    max_correlation_exposure: int = 4
+    min_risk_reward: float = 2.0
     min_confidence: float = 0.7
+    max_drawdown_pct: float = 15.0
 
     # --- Scheduling ---
     analysis_interval_minutes: int = 1
@@ -82,6 +86,8 @@ class Settings(BaseSettings):
     stoch_slowing: int = 3
     mfi_period: int = 14
     atr_period: int = 14
+    cci_period: int = 20
+    williams_r_period: int = 14
     ema_short: int = 20
     ema_medium: int = 50
     ema_long: int = 200

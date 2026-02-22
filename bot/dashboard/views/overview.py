@@ -118,8 +118,12 @@ class OverviewViews:
     def _get_circuit_breaker_status(self) -> dict:
         """Get circuit breaker status from risk manager."""
         if self._risk_manager and hasattr(self._risk_manager, "is_circuit_breaker_active"):
+            reason = (
+                getattr(self._risk_manager, "_drawdown_breaker_reason", None)
+                or getattr(self._risk_manager, "_circuit_breaker_reason", None)
+            )
             return {
                 "active": self._risk_manager.is_circuit_breaker_active,
-                "reason": getattr(self._risk_manager, "_circuit_breaker_reason", None),
+                "reason": reason,
             }
         return {"active": False, "reason": None}
