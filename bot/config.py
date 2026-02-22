@@ -64,9 +64,9 @@ class Settings(BaseSettings):
     max_position_pct: float = 2.0
     max_daily_loss_pct: float = 5.0
     max_open_positions: int = 3
-    max_correlation_exposure: int = 2
+    max_correlation_exposure: int = 3
     min_risk_reward: float = 1.5
-    min_confidence: float = 0.6
+    min_confidence: float = 0.7
 
     # --- Scheduling ---
     analysis_interval_minutes: int = 15

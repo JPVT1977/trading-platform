@@ -67,6 +67,15 @@ class ExecutionEngine:
             logger.warning(f"Risk rejected {signal.symbol}: {risk_result.reason}")
             return None
 
+        # Step 1b: Handle reversal — close existing position first
+        if risk_result.reason.startswith("REVERSAL:"):
+            old_order_id = risk_result.reason.split(":", 1)[1]
+            await self._close_position_for_reversal(old_order_id, signal.symbol)
+            # Remove old position from in-memory portfolio
+            portfolio.open_positions = [
+                p for p in portfolio.open_positions if str(p.id) != old_order_id
+            ]
+
         # Step 2: Position sizing
         quantity = self._risk.calculate_position_size(signal, portfolio)
         if quantity <= 0:
@@ -273,6 +282,66 @@ class ExecutionEngine:
                 await self._sms.send_order_alert(closed_order)
 
         return closed_count
+
+    async def _close_position_for_reversal(self, order_id: str, symbol: str) -> None:
+        """Close an existing position to allow a reversal trade."""
+        pool = self._db.pool
+        row = await pool.fetchrow(
+            "SELECT * FROM orders WHERE id = $1", order_id,
+        )
+        if not row:
+            logger.warning(f"Reversal: order {order_id} not found in DB")
+            return
+
+        entry_price = float(row["entry_price"])
+        quantity = float(row["quantity"])
+        direction = row["direction"]
+
+        # Get current market price for P&L calculation
+        try:
+            ticker = await self._market.fetch_ticker(symbol)
+            exit_price = float(ticker["last"])
+        except Exception as e:
+            logger.error(f"Reversal: failed to fetch price for {symbol}: {e}")
+            return
+
+        # Calculate P&L
+        if direction == "long":
+            pnl = (exit_price - entry_price) * quantity
+        else:
+            pnl = (entry_price - exit_price) * quantity
+        fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
+        pnl_net = pnl - fees
+
+        # Close the order
+        await pool.execute(
+            queries.UPDATE_ORDER_CLOSE,
+            order_id, pnl_net, fees, exit_price,
+        )
+
+        pnl_prefix = "+" if pnl_net >= 0 else ""
+        logger.info(
+            f"REVERSAL CLOSE: {symbol} {direction} @ {exit_price:.2f} | "
+            f"P&L: {pnl_prefix}{pnl_net:.2f} (fees: {fees:.2f})"
+        )
+
+        # Send alerts for the closure
+        closed_order = TradeOrder(
+            id=str(order_id),
+            symbol=symbol,
+            direction=direction,
+            state=OrderState.CLOSED,
+            entry_price=entry_price,
+            stop_loss=float(row["stop_loss"]),
+            take_profit_1=float(row["take_profit_1"]),
+            quantity=quantity,
+            filled_price=exit_price,
+            pnl=pnl_net,
+            fees=fees,
+        )
+        await self._telegram.send_order_alert(closed_order)
+        if self._sms:
+            await self._sms.send_order_alert(closed_order)
 
     async def _persist_signal(self, signal: DivergenceSignal) -> str | None:
         """Save the signal to the database and return its ID."""

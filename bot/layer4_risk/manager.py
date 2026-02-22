@@ -31,7 +31,11 @@ class RiskManager:
     def check_entry(
         self, signal: DivergenceSignal, portfolio: PortfolioState
     ) -> RiskCheckResult:
-        """Run all risk checks before allowing a trade entry."""
+        """Run all risk checks before allowing a trade entry.
+
+        Returns approved=True if the trade can proceed.
+        Returns reason="REVERSAL:..." if an existing position must be closed first.
+        """
 
         # Auto-reset circuit breaker at start of new day
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -58,8 +62,25 @@ class RiskManager:
                     reason=self._circuit_breaker_reason or "Daily loss limit exceeded",
                 )
 
-        # Check 3: Max open positions
         active_states = {OrderState.PENDING, OrderState.SUBMITTED, OrderState.FILLED, OrderState.PARTIALLY_FILLED}
+
+        # Check 3: Duplicate symbol — same direction blocked, opposite = reversal
+        for p in portfolio.open_positions:
+            if p.state in active_states and p.symbol == signal.symbol:
+                if signal.direction is not None and p.direction != signal.direction:
+                    # Opposite direction = reversal signal → approve with REVERSAL flag
+                    return RiskCheckResult(
+                        approved=True,
+                        reason=f"REVERSAL:{p.id}",
+                    )
+                else:
+                    # Same direction = already positioned
+                    return RiskCheckResult(
+                        approved=False,
+                        reason=f"Already {p.direction.value if hasattr(p.direction, 'value') else p.direction} on {signal.symbol}",
+                    )
+
+        # Check 4: Max open positions
         open_count = sum(1 for p in portfolio.open_positions if p.state in active_states)
         if open_count >= self._settings.max_open_positions:
             return RiskCheckResult(
@@ -67,7 +88,7 @@ class RiskManager:
                 reason=f"Max open positions ({self._settings.max_open_positions}) reached ({open_count} open)",
             )
 
-        # Check 4: Correlation exposure (same-direction positions)
+        # Check 5: Correlation exposure (same-direction positions)
         if signal.direction is not None:
             same_direction_count = sum(
                 1 for p in portfolio.open_positions
@@ -81,14 +102,6 @@ class RiskManager:
                         f"{signal.direction.value} positions already open "
                         f"(max {self._settings.max_correlation_exposure})"
                     ),
-                )
-
-        # Check 5: Duplicate symbol check (don't open two positions on same symbol)
-        for p in portfolio.open_positions:
-            if p.state in active_states and p.symbol == signal.symbol:
-                return RiskCheckResult(
-                    approved=False,
-                    reason=f"Already have an open position on {signal.symbol}",
                 )
 
         return RiskCheckResult(approved=True, reason="All risk checks passed")

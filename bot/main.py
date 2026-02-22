@@ -35,6 +35,19 @@ from bot.layer5_monitoring.sms import SMSClient
 from bot.layer5_monitoring.telegram import TelegramClient
 from bot.models import AnalysisCycleResult
 
+# Track last candle timestamp per symbol/timeframe to skip duplicate Claude calls
+_last_candle_times: dict[str, str] = {}
+
+
+async def position_monitor(engine: ExecutionEngine) -> None:
+    """Standalone position monitor — checks SL/TP every 2 minutes."""
+    try:
+        closed = await engine.monitor_open_positions()
+        if closed > 0:
+            logger.info(f"Position monitor: {closed} position(s) closed")
+    except Exception as e:
+        logger.error(f"Position monitor error: {e}")
+
 
 async def _persist_signal(
     db: Database,
@@ -86,14 +99,6 @@ async def analysis_cycle(
     )
     cycle_start = time.monotonic()
 
-    # --- Monitor open positions (check SL/TP hits) ---
-    try:
-        closed = await engine.monitor_open_positions()
-        if closed > 0:
-            logger.info(f"Position monitor: {closed} position(s) closed")
-    except Exception as e:
-        logger.error(f"Position monitor error: {e}")
-
     # Get current portfolio state for risk checks
     portfolio = await risk.get_portfolio_state()
 
@@ -131,8 +136,17 @@ async def analysis_cycle(
                     continue
 
                 indicators = compute_indicators(candles, symbol, timeframe, settings)
-                payload = build_analysis_payload(indicators, settings)
                 result.symbols_analyzed.append(f"{symbol}/{timeframe}")
+
+                # Skip Claude API if candle data hasn't changed (saves cost + avoids dupes)
+                candle_key = f"{symbol}/{timeframe}"
+                latest_ts = candles[-1].timestamp.isoformat()
+                if _last_candle_times.get(candle_key) == latest_ts:
+                    logger.debug(f"Skipping {candle_key}: no new candle since last cycle")
+                    continue
+                _last_candle_times[candle_key] = latest_ts
+
+                payload = build_analysis_payload(indicators, settings)
 
                 # --- Layer 2: Intelligence ---
                 signal = await claude.analyze_divergence(payload, symbol, timeframe)
@@ -276,8 +290,20 @@ async def main() -> None:
         max_instances=1,
         misfire_grace_time=60,
     )
+    # Monitor open positions every 2 minutes (SL/TP checks — faster than analysis)
+    scheduler.add_job(
+        position_monitor,
+        "interval",
+        minutes=2,
+        args=[engine],
+        id="position_monitor",
+        name="Position Monitor (SL/TP)",
+        max_instances=1,
+        misfire_grace_time=30,
+    )
     scheduler.start()
-    logger.info("Scheduler started")
+    logger.info("Scheduler started (analysis: every %dmin, SL/TP monitor: every 2min)",
+                settings.analysis_interval_minutes)
 
     # Run first cycle immediately
     logger.info("Running initial analysis cycle...")
