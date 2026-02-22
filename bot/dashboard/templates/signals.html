@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Signals{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Signals</h1>
+    <p class="page-subtitle">All divergence signals detected by Claude — {{ total }} total</p>
+</div>
+
+<div class="card">
+    <!-- Filter Pills -->
+    <div class="filter-pills">
+        <a href="/dashboard/signals?filter=all" class="filter-pill {{ 'active' if filter == 'all' else '' }}">All</a>
+        <a href="/dashboard/signals?filter=validated" class="filter-pill {{ 'active' if filter == 'validated' else '' }}">Validated</a>
+        <a href="/dashboard/signals?filter=rejected" class="filter-pill {{ 'active' if filter == 'rejected' else '' }}">Rejected</a>
+    </div>
+
+    <div id="signals-content">
+        {% include "partials/signals_table.html" %}
+    </div>
+</div>
+{% endblock %}

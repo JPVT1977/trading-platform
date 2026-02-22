@@ -137,3 +137,43 @@ CREATE TABLE IF NOT EXISTS analysis_cycles (
 
 CREATE INDEX IF NOT EXISTS idx_analysis_cycles_time
     ON analysis_cycles (started_at DESC);
+
+-- ===================================================================
+-- Dashboard: Users and Sessions
+-- ===================================================================
+
+CREATE TABLE IF NOT EXISTS users (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name  TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_login_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id         TEXT PRIMARY KEY,  -- 32-byte hex token
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    ip_address TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_expires
+    ON sessions (expires_at);
+
+-- ===================================================================
+-- Dashboard: Performance indexes
+-- ===================================================================
+
+CREATE INDEX IF NOT EXISTS idx_signals_created_at
+    ON signals (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_orders_closed
+    ON orders (closed_at DESC) WHERE state = 'closed';
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_time
+    ON portfolio_snapshots (time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_circuit_breaker_time
+    ON circuit_breaker_events (triggered_at DESC);

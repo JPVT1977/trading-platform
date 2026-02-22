@@ -1,0 +1,85 @@
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Symbol</th>
+                <th>TF</th>
+                <th>Type</th>
+                <th>Indicator</th>
+                <th>Conf.</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>Status</th>
+                <th>Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in signals %}
+            <tr class="expand-trigger" onclick="toggleExpand('{{ s.id }}')">
+                <td class="mono text-sm">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><strong>{{ s.symbol }}</strong></td>
+                <td class="text-muted">{{ s.timeframe }}</td>
+                <td class="text-sm">{{ s.divergence_type }}</td>
+                <td>{{ s.indicator or '-' }}</td>
+                <td class="mono">{{ "%.0f" | format(s.confidence * 100) }}%</td>
+                <td>
+                    {% if s.direction %}
+                    <span class="badge badge-{{ s.direction }}">{{ s.direction }}</span>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td class="mono">{{ "%.2f" | format(s.entry_price) if s.entry_price else '-' }}</td>
+                <td class="mono">{{ "%.2f" | format(s.stop_loss) if s.stop_loss else '-' }}</td>
+                <td>
+                    {% if s.validated %}
+                    <span class="badge badge-success">Pass</span>
+                    {% else %}
+                    <span class="badge badge-danger">Reject</span>
+                    {% endif %}
+                </td>
+                <td class="text-sm text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">
+                    {{ s.validation_reason or '' }}
+                </td>
+            </tr>
+            <tr class="expand-content" id="expand-{{ s.id }}">
+                <td colspan="11">
+                    <strong>Reasoning:</strong> {{ s.reasoning or 'No reasoning provided' }}
+                    {% if s.take_profit_1 %}
+                    <br><strong>TP1:</strong> {{ "%.2f" | format(s.take_profit_1) }}
+                    {% endif %}
+                    {% if s.validation_reason %}
+                    <br><strong>Validation:</strong> {{ s.validation_reason }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="11" class="text-muted" style="text-align:center;padding:40px;">No signals found</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="/dashboard/signals?filter={{ filter }}&page={{ page - 1 }}">Prev</a>
+    {% endif %}
+
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+        <a href="/dashboard/signals?filter={{ filter }}&page={{ p }}">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="text-muted">...</span>
+        {% endif %}
+    {% endfor %}
+
+    {% if page < total_pages %}
+    <a href="/dashboard/signals?filter={{ filter }}&page={{ page + 1 }}">Next</a>
+    {% endif %}
+</div>
+{% endif %}

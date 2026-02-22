@@ -10,8 +10,13 @@ anthropic>=0.45.0
 # Database (async)
 asyncpg>=0.30.0
 
-# HTTP server (health checks)
+# HTTP server (health checks + dashboard)
 aiohttp>=3.11.0
+aiohttp-jinja2>=1.6
+Jinja2>=3.1.0
+
+# Password hashing (dashboard auth)
+bcrypt>=4.2.0
 
 # Scheduling
 APScheduler>=3.11.0

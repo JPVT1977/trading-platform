@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Risk{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Risk Management</h1>
+    <p class="page-subtitle">Current limits, usage, and circuit breaker status</p>
+</div>
+
+<!-- Circuit Breaker Status -->
+<div class="card mb-2">
+    <div class="card-header">
+        <h2 class="card-title">Circuit Breaker</h2>
+        {% if circuit_breaker.active %}
+        <span class="badge badge-danger"><span class="status-dot red"></span>TRIPPED</span>
+        {% else %}
+        <span class="badge badge-success"><span class="status-dot green"></span>Normal</span>
+        {% endif %}
+    </div>
+    {% if circuit_breaker.active %}
+    <p class="text-danger" style="font-size:14px;">{{ circuit_breaker.reason }}</p>
+    {% else %}
+    <p class="text-muted text-sm">All risk checks passing. Trading is active.</p>
+    {% endif %}
+</div>
+
+<!-- Risk Limits -->
+<div class="card mb-2">
+    <div class="card-header">
+        <h2 class="card-title">Current Limits vs Usage</h2>
+    </div>
+
+    <!-- Daily Loss -->
+    <div class="progress-container">
+        <div class="progress-label">
+            <span>Daily Loss</span>
+            <span class="value">{{ "%.2f" | format(limits.daily_loss.current) }}% / {{ "%.1f" | format(limits.daily_loss.max) }}%</span>
+        </div>
+        <div class="progress-bar">
+            {% set pct = limits.daily_loss.pct %}
+            <div class="progress-fill {{ 'green' if pct < 50 else ('yellow' if pct < 80 else 'red') }}"
+                 style="width: {{ pct }}%"></div>
+        </div>
+    </div>
+
+    <!-- Open Positions -->
+    <div class="progress-container">
+        <div class="progress-label">
+            <span>Open Positions</span>
+            <span class="value">{{ limits.open_positions.current }} / {{ limits.open_positions.max }}</span>
+        </div>
+        <div class="progress-bar">
+            {% set pct = limits.open_positions.pct %}
+            <div class="progress-fill {{ 'green' if pct < 50 else ('yellow' if pct < 80 else 'red') }}"
+                 style="width: {{ pct }}%"></div>
+        </div>
+    </div>
+
+    <!-- Correlation Exposure -->
+    <div class="progress-container">
+        <div class="progress-label">
+            <span>Correlation Exposure (same direction)</span>
+            <span class="value">{{ limits.correlation.current }} / {{ limits.correlation.max }}</span>
+        </div>
+        <div class="progress-bar">
+            {% set pct = limits.correlation.pct %}
+            <div class="progress-fill {{ 'green' if pct < 50 else ('yellow' if pct < 80 else 'red') }}"
+                 style="width: {{ pct }}%"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Position Sizing Config -->
+<div class="card mb-2">
+    <div class="card-header">
+        <h2 class="card-title">Position Sizing</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+        <div>
+            <div class="text-muted text-sm mb-1">Max Risk per Trade</div>
+            <div class="text-mono" style="font-size:18px;font-weight:600;">{{ position_sizing.max_position_pct }}%</div>
+        </div>
+        <div>
+            <div class="text-muted text-sm mb-1">Min Risk/Reward</div>
+            <div class="text-mono" style="font-size:18px;font-weight:600;">{{ position_sizing.min_risk_reward }}x</div>
+        </div>
+        <div>
+            <div class="text-muted text-sm mb-1">Min Confidence</div>
+            <div class="text-mono" style="font-size:18px;font-weight:600;">{{ "%.0f" | format(position_sizing.min_confidence * 100) }}%</div>
+        </div>
+    </div>
+</div>
+
+<!-- Circuit Breaker History -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Circuit Breaker History</h2>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Triggered</th>
+                    <th>Reason</th>
+                    <th>Resolved</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in cb_events %}
+                <tr>
+                    <td class="mono text-sm">{{ e.triggered_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ e.reason }}</td>
+                    <td class="mono text-sm">
+                        {% if e.resolved_at %}
+                        {{ e.resolved_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                        <span class="text-danger">Active</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono text-sm text-muted">
+                        {% if e.resolved_at %}
+                        {% set delta = e.resolved_at - e.triggered_at %}
+                        {{ delta.seconds // 3600 }}h {{ (delta.seconds % 3600 // 60) }}m
+                        {% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted" style="text-align:center;padding:40px;">No circuit breaker events</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

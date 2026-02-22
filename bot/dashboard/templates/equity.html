@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Equity Curve{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Equity Curve</h1>
+    <p class="page-subtitle">Portfolio value over time</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Portfolio Value</h2>
+        <div class="filter-pills">
+            <button class="filter-pill period-btn active" data-period="7d" onclick="loadEquityData('7d')">7D</button>
+            <button class="filter-pill period-btn" data-period="30d" onclick="loadEquityData('30d')">30D</button>
+            <button class="filter-pill period-btn" data-period="90d" onclick="loadEquityData('90d')">90D</button>
+            <button class="filter-pill period-btn" data-period="all" onclick="loadEquityData('all')">All</button>
+        </div>
+    </div>
+    <div class="chart-container">
+        <canvas id="equityChart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        initEquityChart('equityChart');
+        loadEquityData('7d');
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Current bot configuration (read-only)</p>
+</div>
+
+<div class="settings-grid">
+    {% for group_name, settings in groups.items() %}
+    <div class="card">
+        <div class="setting-group">
+            <h3>{{ group_name }}</h3>
+            {% for key, value in settings.items() %}
+            <div class="setting-row">
+                <span class="key">{{ key }}</span>
+                <span class="value">{{ value }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

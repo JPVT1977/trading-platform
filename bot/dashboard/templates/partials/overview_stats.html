@@ -1,0 +1,107 @@
+<!-- Stats Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total Equity</div>
+        <div class="stat-value neutral text-mono">${{ "%.2f" | format(stats.total_equity) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Daily P&L</div>
+        <div class="stat-value {{ 'positive' if stats.daily_pnl >= 0 else 'negative' }}">
+            {{ "+" if stats.daily_pnl >= 0 else "" }}${{ "%.2f" | format(stats.daily_pnl) }}
+        </div>
+        <div class="stat-change {{ 'text-success' if stats.daily_pnl_pct >= 0 else 'text-danger' }}">
+            {{ "+" if stats.daily_pnl_pct >= 0 else "" }}{{ "%.2f" | format(stats.daily_pnl_pct) }}%
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Open Positions</div>
+        <div class="stat-value neutral">{{ stats.open_positions }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Trades Today</div>
+        <div class="stat-value neutral">{{ stats.daily_trades }}</div>
+    </div>
+</div>
+
+<!-- Two-column: Recent Signals + Analysis Cycles -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+
+    <!-- Recent Signals -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Recent Signals</h2>
+            <a href="/dashboard/signals" class="text-muted text-sm" style="text-decoration:none;">View all</a>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Conf.</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in signals %}
+                    <tr>
+                        <td class="mono text-sm">{{ s.created_at.strftime('%H:%M:%S') }}</td>
+                        <td>{{ s.symbol }}</td>
+                        <td>
+                            {% if s.direction %}
+                            <span class="badge badge-{{ s.direction }}">{{ s.direction }}</span>
+                            {% endif %}
+                            <span class="text-sm text-muted">{{ s.divergence_type }}</span>
+                        </td>
+                        <td class="mono">{{ "%.0f" | format(s.confidence * 100) }}%</td>
+                        <td>
+                            {% if s.validated %}
+                            <span class="badge badge-success">Pass</span>
+                            {% else %}
+                            <span class="badge badge-danger">Reject</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No signals yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Analysis Cycles -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Analysis Cycles</h2>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Duration</th>
+                        <th>Found</th>
+                        <th>Valid</th>
+                        <th>Orders</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cycles %}
+                    <tr>
+                        <td class="mono text-sm">{{ c.started_at.strftime('%H:%M:%S') }}</td>
+                        <td class="mono">{{ c.duration_ms or 0 }}ms</td>
+                        <td class="mono">{{ c.signals_found }}</td>
+                        <td class="mono">{{ c.signals_validated }}</td>
+                        <td class="mono">{{ c.orders_placed }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-sm" style="text-align:center;padding:32px;">No cycles yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>

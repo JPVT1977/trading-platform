@@ -45,6 +45,21 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # --- ClickSend SMS (replaces Telegram) ---
+    clicksend_username: str = ""
+    clicksend_api_key: str = ""
+    clicksend_from_name: str = "TradingBot"
+    sms_to_numbers: list[str] = Field(default=[])
+
+    # --- Dashboard ---
+    dashboard_secret_key: str = ""
+    dashboard_user_1_email: str = "jp@nucleus360.com.au"
+    dashboard_user_1_password: str = ""
+    dashboard_user_1_name: str = "JP"
+    dashboard_user_2_email: str = "sam@nucleus360.com.au"
+    dashboard_user_2_password: str = ""
+    dashboard_user_2_name: str = "Sam"
+
     # --- Risk Management ---
     max_position_pct: float = 2.0
     max_daily_loss_pct: float = 5.0

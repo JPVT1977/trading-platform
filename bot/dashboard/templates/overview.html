@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center">
+    <div>
+        <h1 class="page-title">Overview</h1>
+        <p class="page-subtitle">Real-time trading dashboard</p>
+    </div>
+    <div class="flex gap-1 items-center">
+        <span class="badge badge-{{ mode }}">{{ mode | upper }}</span>
+        {% if circuit_breaker.active %}
+        <span class="badge badge-danger"><span class="status-dot red"></span>Circuit Breaker</span>
+        {% else %}
+        <span class="badge badge-success"><span class="status-dot green"></span>Active</span>
+        {% endif %}
+        <span class="spinner htmx-indicator" id="loading"></span>
+    </div>
+</div>
+
+<div id="overview-content"
+     hx-get="/api/overview"
+     hx-trigger="every 30s"
+     hx-indicator="#loading"
+     hx-swap="innerHTML">
+    {% include "partials/overview_stats.html" %}
+</div>
+{% endblock %}

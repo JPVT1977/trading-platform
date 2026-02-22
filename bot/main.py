@@ -31,6 +31,7 @@ from bot.layer3_execution.engine import ExecutionEngine
 from bot.layer4_risk.manager import RiskManager
 from bot.layer5_monitoring.health import HealthServer
 from bot.layer5_monitoring.logger import setup_logger
+from bot.layer5_monitoring.sms import SMSClient
 from bot.layer5_monitoring.telegram import TelegramClient
 from bot.models import AnalysisCycleResult
 
@@ -165,19 +166,26 @@ async def main() -> None:
     claude = ClaudeClient(settings)
     risk = RiskManager(settings, db)
     telegram = TelegramClient(settings)
+    sms = SMSClient(settings)
     engine = ExecutionEngine(settings, db, market, risk, telegram)
-    health = HealthServer(settings, db, market)
+    health = HealthServer(settings, db, market, risk_manager=risk)
 
     # Start health check server (Fly.io needs this)
     await health.start()
 
-    # Send startup notification
+    # Send startup notifications
+    startup_msg = (
+        f"Bot Started | Mode: {settings.trading_mode.value} | "
+        f"Symbols: {', '.join(settings.symbols)} | "
+        f"Interval: {settings.analysis_interval_minutes}min"
+    )
     await telegram.send(
         f"<b>Bot Started</b>\n"
         f"Mode: {settings.trading_mode.value}\n"
         f"Symbols: {', '.join(settings.symbols)}\n"
         f"Interval: {settings.analysis_interval_minutes}min"
     )
+    await sms.send(startup_msg)
 
     # Set up scheduler
     scheduler = AsyncIOScheduler()
@@ -218,7 +226,9 @@ async def main() -> None:
     await health.stop()
     await market.close()
     await telegram.send("<b>Bot Stopped</b>\nGraceful shutdown complete.")
+    await sms.send("Bot stopped. Graceful shutdown complete.")
     await telegram.close()
+    await sms.close()
     await db.disconnect()
     logger.info("Bot stopped cleanly")
 
