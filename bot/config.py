@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # --- Exchange (CCXT) ---
-    exchange_id: str = "bybit"
+    exchange_id: str = "binance"
     exchange_api_key: str = ""
     exchange_api_secret: str = ""
     exchange_sandbox: bool = True
@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     min_risk_reward: float = 2.0
     min_confidence: float = 0.7
     max_drawdown_pct: float = 15.0
+
+    # --- Phase 2: Multi-TF Confirmation ---
+    use_multi_tf_confirmation: bool = False  # 4h setup + 1h trigger
+    setup_expiry_hours: int = 24  # How long a 4h setup stays valid
 
     # --- Scheduling ---
     analysis_interval_minutes: int = 1

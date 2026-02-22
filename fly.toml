@@ -19,6 +19,8 @@ primary_region = "syd"
   ANALYSIS_INTERVAL_MINUTES = "15"
   SYMBOLS = '["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","XRP/USDT","DOGE/USDT","ADA/USDT","AVAX/USDT","LINK/USDT","DOT/USDT"]'
   TIMEFRAMES = '["1h","4h"]'
+  USE_MULTI_TF_CONFIRMATION = "true"
+  SETUP_EXPIRY_HOURS = "24"
   # Secrets set via: fly secrets set ANTHROPIC_API_KEY=... etc.
 
 [http_service]

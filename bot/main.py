@@ -6,6 +6,11 @@ Wires all five layers together:
   Layer 3: Execution Engine (deterministic, FSM-based)
   Layer 4: Risk Management (hard-coded rules, circuit breakers)
   Layer 5: Monitoring (Loguru, Telegram, health checks)
+
+Phase 2: Multi-TF Confirmation (4h setup + 1h trigger)
+  When use_multi_tf_confirmation is enabled, 4h signals are stored as "setups"
+  and only become trades when a 1h divergence in the same direction confirms
+  within setup_expiry_hours. This filters out weak signals.
 """
 
 from __future__ import annotations
@@ -15,7 +20,8 @@ import json
 import signal as signal_module
 import sys
 import time
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
@@ -34,13 +40,120 @@ from bot.layer5_monitoring.logger import setup_logger
 from bot.layer5_monitoring.outcome_tracker import track_signal_outcomes
 from bot.layer5_monitoring.sms import SMSClient
 from bot.layer5_monitoring.telegram import TelegramClient
-from bot.models import AnalysisCycleResult
+from bot.models import AnalysisCycleResult, DivergenceSignal, SignalDirection
 
 # Track last candle timestamp per symbol/timeframe to determine forming vs closed
 _last_candle_times: dict[str, str] = {}
 
 # Track which candle already produced a signal (prevents duplicate signals per candle)
 _signaled_candles: dict[str, str] = {}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Multi-TF Setup Tracking
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ActiveSetup:
+    """A 4h divergence signal waiting for 1h confirmation."""
+
+    signal: DivergenceSignal
+    detected_at: datetime
+    expires_at: datetime
+    direction: SignalDirection
+    signal_id: str | None = None  # DB signal ID for traceability
+
+
+# Active setups keyed by symbol (e.g. "BTC/USDT" -> [ActiveSetup, ...])
+_active_setups: dict[str, list[ActiveSetup]] = {}
+
+
+def _expire_setups(now: datetime) -> int:
+    """Remove expired setups from all symbols. Returns count expired."""
+    expired = 0
+    for symbol in list(_active_setups.keys()):
+        before = len(_active_setups[symbol])
+        _active_setups[symbol] = [
+            s for s in _active_setups[symbol] if now < s.expires_at
+        ]
+        expired += before - len(_active_setups[symbol])
+        if not _active_setups[symbol]:
+            del _active_setups[symbol]
+    return expired
+
+
+def _find_matching_setup(symbol: str, direction: SignalDirection) -> ActiveSetup | None:
+    """Find an active 4h setup for the given symbol and direction."""
+    setups = _active_setups.get(symbol, [])
+    for setup in setups:
+        if setup.direction == direction:
+            return setup
+    return None
+
+
+def _build_confirmed_signal(
+    setup: ActiveSetup,
+    signal_1h: DivergenceSignal,
+    settings: Settings,
+) -> DivergenceSignal | None:
+    """Build a confirmed signal using 1h entry + 4h structural stop loss.
+
+    Returns None if the levels are invalid (e.g. SL on wrong side of entry).
+    """
+    entry = signal_1h.entry_price
+    stop_loss = setup.signal.stop_loss
+
+    if entry is None or stop_loss is None:
+        return None
+
+    direction = setup.direction
+
+    # If 4h SL is on wrong side of 1h entry (price moved a lot), fall back to 1h SL
+    if direction == SignalDirection.LONG:
+        if stop_loss >= entry:
+            stop_loss = signal_1h.stop_loss
+        if stop_loss is None or stop_loss >= entry:
+            return None
+        risk = entry - stop_loss
+        tp1 = entry + (risk * settings.min_risk_reward)
+        tp2 = entry + (risk * settings.min_risk_reward * 1.5)
+        tp3 = entry + (risk * settings.min_risk_reward * 2.0)
+    else:
+        if stop_loss <= entry:
+            stop_loss = signal_1h.stop_loss
+        if stop_loss is None or stop_loss <= entry:
+            return None
+        risk = stop_loss - entry
+        tp1 = entry - (risk * settings.min_risk_reward)
+        tp2 = entry - (risk * settings.min_risk_reward * 1.5)
+        tp3 = entry - (risk * settings.min_risk_reward * 2.0)
+
+    return DivergenceSignal(
+        divergence_detected=True,
+        divergence_type=setup.signal.divergence_type,
+        indicator=f"4h:{setup.signal.indicator}, 1h:{signal_1h.indicator}",
+        confidence=max(setup.signal.confidence, signal_1h.confidence),
+        direction=direction,
+        entry_price=entry,
+        stop_loss=stop_loss,
+        take_profit_1=tp1,
+        take_profit_2=tp2,
+        take_profit_3=tp3,
+        reasoning=(
+            f"Multi-TF confirmed: 4h {setup.signal.divergence_type} "
+            f"({setup.signal.indicator}) + 1h {signal_1h.divergence_type} "
+            f"({signal_1h.indicator}). "
+            f"Entry={entry:.2f} (1h), SL={stop_loss:.2f} (4h structural)"
+        ),
+        symbol=signal_1h.symbol,
+        timeframe="4h+1h",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Candle cache seeding
+# ---------------------------------------------------------------------------
 
 
 async def _seed_candle_cache(market: MarketDataClient, settings: Settings) -> None:
@@ -118,13 +231,29 @@ async def analysis_cycle(
     db: Database,
     telegram: TelegramClient,
 ) -> AnalysisCycleResult:
-    """Single analysis cycle: fetch → compute → analyse → validate → execute."""
+    """Single analysis cycle: fetch -> compute -> analyse -> validate -> execute.
+
+    When use_multi_tf_confirmation is enabled:
+    - 4h signals are stored as "active setups" (not executed immediately)
+    - 1h signals only execute if they confirm a matching 4h setup
+    - Setups expire after setup_expiry_hours (default 24h)
+    """
 
     result = AnalysisCycleResult(
         started_at=datetime.now(timezone.utc),
         symbols_analyzed=[],
     )
     cycle_start = time.monotonic()
+    now = datetime.now(timezone.utc)
+
+    # Phase 2: Expire old setups at the start of each cycle
+    if settings.use_multi_tf_confirmation:
+        expired = _expire_setups(now)
+        if expired:
+            logger.info(f"Multi-TF: expired {expired} setup(s)")
+        active_count = sum(len(v) for v in _active_setups.values())
+        if active_count:
+            logger.info(f"Multi-TF: {active_count} active setup(s) across {len(_active_setups)} symbol(s)")
 
     # Get current portfolio state for risk checks
     portfolio = await risk.get_portfolio_state()
@@ -220,6 +349,86 @@ async def analysis_cycle(
 
                 result.signals_validated += 1
 
+                # ==========================================================
+                # Phase 2: Multi-TF Confirmation Logic
+                # ==========================================================
+                if settings.use_multi_tf_confirmation:
+                    if timeframe == "4h":
+                        # 4h signal → store as active setup, do NOT execute
+                        setup = ActiveSetup(
+                            signal=signal,
+                            detected_at=now,
+                            expires_at=now + timedelta(hours=settings.setup_expiry_hours),
+                            direction=signal.direction,
+                            signal_id=signal_id,
+                        )
+                        _active_setups.setdefault(symbol, []).append(setup)
+                        logger.info(
+                            f"Multi-TF: 4h setup CREATED for {symbol} "
+                            f"({signal.direction.value} {signal.divergence_type}) — "
+                            f"expires in {settings.setup_expiry_hours}h"
+                        )
+                        await telegram.send(
+                            f"<b>4h Setup Created</b>\n"
+                            f"Symbol: {symbol}\n"
+                            f"Direction: {signal.direction.value}\n"
+                            f"Type: {signal.divergence_type}\n"
+                            f"Confidence: {signal.confidence:.0%}\n"
+                            f"Awaiting 1h confirmation (expires {settings.setup_expiry_hours}h)"
+                        )
+                        result.symbol_details[candle_key] = "multi_tf_setup_created"
+                        continue  # Don't execute — wait for 1h confirmation
+
+                    elif timeframe == "1h":
+                        # 1h signal → check for matching 4h setup
+                        if signal.direction is None:
+                            result.symbol_details[candle_key] = "signal_validated (no direction)"
+                            continue
+
+                        matching_setup = _find_matching_setup(symbol, signal.direction)
+                        if matching_setup is None:
+                            logger.info(
+                                f"Multi-TF: 1h signal for {symbol} ({signal.direction.value}) "
+                                f"— no matching 4h setup, skipping"
+                            )
+                            result.symbol_details[candle_key] = "multi_tf_no_matching_setup"
+                            continue
+
+                        # Build confirmed signal with 1h entry + 4h SL
+                        confirmed = _build_confirmed_signal(matching_setup, signal, settings)
+                        if confirmed is None:
+                            logger.warning(
+                                f"Multi-TF: Invalid levels for {symbol} confirmed signal, skipping"
+                            )
+                            result.symbol_details[candle_key] = "multi_tf_invalid_levels"
+                            continue
+
+                        # Remove the consumed setup
+                        _active_setups[symbol].remove(matching_setup)
+                        if not _active_setups[symbol]:
+                            del _active_setups[symbol]
+
+                        # Persist the confirmed signal
+                        confirmed_signal_id = await _persist_signal(
+                            db, confirmed, True, "Multi-TF confirmed (4h setup + 1h trigger)",
+                        )
+
+                        logger.info(
+                            f"Multi-TF: CONFIRMED {symbol} {confirmed.direction.value} — "
+                            f"1h entry={confirmed.entry_price:.2f}, "
+                            f"4h SL={confirmed.stop_loss:.2f}"
+                        )
+
+                        # Use the confirmed signal for execution
+                        signal = confirmed
+                        signal_id = confirmed_signal_id
+
+                        # Fall through to execution below
+
+                # ==========================================================
+                # Execution (shared path for both modes)
+                # ==========================================================
+
                 # Skip if we already traded this symbol this cycle
                 if symbol in traded_symbols:
                     logger.info(f"Skipping {symbol}/{timeframe}: already traded {symbol} this cycle")
@@ -303,6 +512,11 @@ async def main() -> None:
     logger.info(f"Symbols: {settings.symbols}")
     logger.info(f"Timeframes: {settings.timeframes}")
     logger.info(f"Analysis interval: {settings.analysis_interval_minutes} minutes")
+    if settings.use_multi_tf_confirmation:
+        logger.info(
+            f"Multi-TF confirmation ENABLED (4h setup + 1h trigger, "
+            f"expiry={settings.setup_expiry_hours}h)"
+        )
 
     # Initialise components
     db = Database(settings)
@@ -320,16 +534,23 @@ async def main() -> None:
     await health.start()
 
     # Send startup notifications
+    multi_tf_status = (
+        f"Multi-TF: ON (4h+1h, {settings.setup_expiry_hours}h expiry)"
+        if settings.use_multi_tf_confirmation
+        else "Multi-TF: OFF"
+    )
     startup_msg = (
         f"Bot Started | Mode: {settings.trading_mode.value} | "
         f"Symbols: {', '.join(settings.symbols)} | "
-        f"Interval: {settings.analysis_interval_minutes}min"
+        f"Interval: {settings.analysis_interval_minutes}min | "
+        f"{multi_tf_status}"
     )
     await telegram.send(
         f"<b>Bot Started</b>\n"
         f"Mode: {settings.trading_mode.value}\n"
         f"Symbols: {', '.join(settings.symbols)}\n"
-        f"Interval: {settings.analysis_interval_minutes}min"
+        f"Interval: {settings.analysis_interval_minutes}min\n"
+        f"{multi_tf_status}"
     )
     await sms.send(startup_msg)
 
