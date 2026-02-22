@@ -16,6 +16,7 @@ from bot.dashboard.views.signals import SignalsViews
 
 if TYPE_CHECKING:
     from bot.config import Settings
+    from bot.layer1_data.market_data import MarketDataClient
     from bot.layer4_risk.manager import RiskManager
 
 
@@ -24,13 +25,14 @@ def setup_routes(
     db_pool,
     settings: Settings,
     risk_manager: RiskManager | None = None,
+    market_client: MarketDataClient | None = None,
 ) -> None:
     """Wire all dashboard routes to the aiohttp app."""
 
     auth = AuthViews(db_pool)
-    overview = OverviewViews(db_pool, settings, risk_manager=risk_manager)
+    overview = OverviewViews(db_pool, settings, risk_manager=risk_manager, market_client=market_client)
     signals = SignalsViews(db_pool)
-    positions = PositionsViews(db_pool)
+    positions = PositionsViews(db_pool, market_client=market_client)
     risk = RiskViews(db_pool, settings, risk_manager)
     equity = EquityViews(db_pool)
     settings_view = SettingsViews(settings)

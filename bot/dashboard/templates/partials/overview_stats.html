@@ -12,6 +12,13 @@
         <div class="stat-change {{ 'text-success' if stats.daily_pnl_pct >= 0 else 'text-danger' }}">
             {{ "+" if stats.daily_pnl_pct >= 0 else "" }}{{ "%.2f" | format(stats.daily_pnl_pct) }}%
         </div>
+        <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
+            <span>Realized: {{ "+" if stats.realized_pnl >= 0 else "" }}${{ "%.2f" | format(stats.realized_pnl) }}</span>
+            &nbsp;|&nbsp;
+            <span class="{{ 'text-success' if stats.unrealized_pnl >= 0 else 'text-danger' }}">
+                Open: {{ "+" if stats.unrealized_pnl >= 0 else "" }}${{ "%.2f" | format(stats.unrealized_pnl) }}
+            </span>
+        </div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Open Positions</div>

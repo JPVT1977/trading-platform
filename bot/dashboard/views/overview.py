@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import aiohttp_jinja2
 from aiohttp import web
+from loguru import logger
 
 from bot.dashboard import queries as dq
 
 
 class OverviewViews:
 
-    def __init__(self, db_pool, settings, risk_manager=None) -> None:
+    def __init__(self, db_pool, settings, risk_manager=None, market_client=None) -> None:
         self._pool = db_pool
         self._settings = settings
         self._risk_manager = risk_manager
+        self._market = market_client
 
     @aiohttp_jinja2.template("overview.html")
     async def overview_page(self, request: web.Request) -> dict:
@@ -49,21 +51,66 @@ class OverviewViews:
         )
 
     async def _get_stats(self) -> dict:
-        """Fetch overview statistics."""
+        """Fetch overview statistics including live unrealized P&L."""
         row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
         total_equity = float(equity_row["total_equity"]) if equity_row else 5000.0
-        daily_pnl = float(row["daily_pnl"]) if row else 0.0
-        daily_pnl_pct = (daily_pnl / total_equity * 100) if total_equity > 0 else 0.0
+        realized_pnl = float(row["daily_pnl"]) if row else 0.0
+
+        # Calculate unrealized P&L from open positions using live prices
+        unrealized_pnl = await self._get_unrealized_pnl()
+
+        total_pnl = realized_pnl + unrealized_pnl
+        total_pnl_pct = (total_pnl / total_equity * 100) if total_equity > 0 else 0.0
 
         return {
             "total_equity": total_equity,
-            "daily_pnl": daily_pnl,
-            "daily_pnl_pct": daily_pnl_pct,
+            "daily_pnl": total_pnl,
+            "daily_pnl_pct": total_pnl_pct,
+            "realized_pnl": realized_pnl,
+            "unrealized_pnl": unrealized_pnl,
             "open_positions": int(row["open_positions"]) if row else 0,
             "daily_trades": int(row["daily_trades"]) if row else 0,
         }
+
+    async def _get_unrealized_pnl(self) -> float:
+        """Fetch live prices and calculate unrealized P&L for open positions."""
+        if not self._market:
+            return 0.0
+
+        try:
+            positions = await self._pool.fetch(dq.GET_OPEN_POSITIONS)
+            if not positions:
+                return 0.0
+
+            # Fetch current prices (group by symbol to minimize API calls)
+            symbols = set(p["symbol"] for p in positions)
+            tickers: dict[str, float] = {}
+            for symbol in symbols:
+                try:
+                    ticker = await self._market.fetch_ticker(symbol)
+                    tickers[symbol] = float(ticker["last"])
+                except Exception:
+                    pass
+
+            # Calculate unrealized P&L
+            total_unrealized = 0.0
+            for p in positions:
+                current_price = tickers.get(p["symbol"])
+                if current_price is None:
+                    continue
+                entry = float(p["entry_price"])
+                qty = float(p["quantity"])
+                if p["direction"] == "long":
+                    total_unrealized += (current_price - entry) * qty
+                else:
+                    total_unrealized += (entry - current_price) * qty
+
+            return total_unrealized
+        except Exception as e:
+            logger.warning(f"Failed to calculate unrealized P&L: {e}")
+            return 0.0
 
     def _get_circuit_breaker_status(self) -> dict:
         """Get circuit breaker status from risk manager."""

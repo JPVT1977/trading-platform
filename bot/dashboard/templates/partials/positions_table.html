@@ -20,9 +20,9 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Direction</th>
-                    <th>Trigger</th>
-                    <th>Confidence</th>
                     <th>Entry</th>
+                    <th>Current</th>
+                    <th>P&L</th>
                     <th>SL</th>
                     <th>TP1</th>
                     <th>Qty</th>
@@ -36,9 +36,22 @@
                 <tr class="expand-trigger" onclick="toggleExpand('open-{{ p.id }}')">
                     <td><strong>{{ p.symbol }}</strong></td>
                     <td><span class="badge badge-{{ p.direction }}">{{ p.direction }}</span></td>
-                    <td class="text-sm">{{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}</td>
-                    <td class="mono">{{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%</td>
                     <td class="mono">{{ "%.2f" | format(p.entry_price) }}</td>
+                    <td class="mono">
+                        {% if p.current_price is not none %}
+                        {{ "%.2f" | format(p.current_price) }}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="mono">
+                        {% if p.unrealized_pnl is not none %}
+                        <span class="{{ 'text-success' if p.unrealized_pnl >= 0 else 'text-danger' }}">
+                            {{ "+" if p.unrealized_pnl >= 0 else "" }}${{ "%.2f" | format(p.unrealized_pnl) }}
+                        </span>
+                        <div class="text-sm {{ 'text-success' if p.pnl_pct >= 0 else 'text-danger' }}">
+                            {{ "+" if p.pnl_pct >= 0 else "" }}{{ "%.2f" | format(p.pnl_pct) }}%
+                        </div>
+                        {% else %}-{% endif %}
+                    </td>
                     <td class="mono">{{ "%.2f" | format(p.stop_loss) }}</td>
                     <td class="mono">{{ "%.2f" | format(p.take_profit_1) }}</td>
                     <td class="mono">{{ "%.6f" | format(p.quantity) }}</td>
@@ -51,7 +64,9 @@
                 </tr>
                 <tr class="expand-content" id="expand-open-{{ p.id }}">
                     <td colspan="11">
-                        <strong>Signal Reasoning:</strong> {{ p.reasoning or 'N/A' }}
+                        <strong>Trigger:</strong> {{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}
+                        &nbsp;|&nbsp; <strong>Confidence:</strong> {{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%
+                        <br><strong>Signal Reasoning:</strong> {{ p.reasoning or 'N/A' }}
                         {% if p.take_profit_2 %}<br><strong>TP2:</strong> {{ "%.2f" | format(p.take_profit_2) }}{% endif %}
                     </td>
                 </tr>

@@ -131,6 +131,7 @@ class HealthServer:
             self._db.pool,
             self._settings,
             risk_manager=self._risk_manager,
+            market_client=self._market,
         )
 
         self._runner = web.AppRunner(self._app)
