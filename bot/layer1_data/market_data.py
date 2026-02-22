@@ -106,6 +106,15 @@ class MarketDataClient:
             params={"stopPrice": stop_price, "triggerPrice": stop_price},
         )
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type((
+            ccxt.NetworkError,
+            ccxt.ExchangeNotAvailable,
+            ccxt.RequestTimeout,
+        )),
+    )
     async def fetch_ticker(self, symbol: str) -> dict:
         """Fetch current ticker (last price, bid, ask) for a symbol."""
         return await self._exchange.fetch_ticker(symbol)

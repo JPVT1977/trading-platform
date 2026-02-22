@@ -73,8 +73,15 @@ UPDATE_ORDER_FILL = """
 
 UPDATE_ORDER_CLOSE = """
     UPDATE orders
-    SET state = 'closed', pnl = $2, fees = $3, closed_at = NOW(), updated_at = NOW()
+    SET state = 'closed', pnl = $2, fees = $3, filled_price = $4,
+        closed_at = NOW(), updated_at = NOW()
     WHERE id = $1
+"""
+
+SELECT_CUMULATIVE_PNL = """
+    SELECT COALESCE(SUM(pnl), 0) as total_pnl
+    FROM orders
+    WHERE state = 'closed'
 """
 
 SELECT_OPEN_ORDERS = """

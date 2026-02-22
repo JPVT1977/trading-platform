@@ -73,7 +73,7 @@ async def analysis_cycle(
         daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
         await db.pool.execute(
             q.INSERT_PORTFOLIO_SNAPSHOT,
-            portfolio.total_equity + daily_pnl,
+            portfolio.total_equity,
             portfolio.available_balance,
             open_count,
             daily_pnl,
@@ -81,6 +81,9 @@ async def analysis_cycle(
         )
     except Exception as e:
         logger.error(f"Failed to record portfolio snapshot: {e}")
+
+    # Track symbols traded this cycle to prevent duplicates
+    traded_symbols: set[str] = set()
 
     for symbol in settings.symbols:
         for timeframe in settings.timeframes:
@@ -119,10 +122,19 @@ async def analysis_cycle(
 
                 result.signals_validated += 1
 
+                # Skip if we already traded this symbol this cycle
+                if symbol in traded_symbols:
+                    logger.info(f"Skipping {symbol}/{timeframe}: already traded {symbol} this cycle")
+                    continue
+
                 # --- Layer 3 + 4: Execution (includes risk checks) ---
                 order = await engine.execute_signal(signal, portfolio)
                 if order:
                     result.orders_placed += 1
+
+                    # Track this symbol as traded + update in-memory portfolio
+                    traded_symbols.add(symbol)
+                    portfolio.open_positions.append(order)
 
                     # Send Telegram alert for the signal
                     await telegram.send_signal_alert(signal)

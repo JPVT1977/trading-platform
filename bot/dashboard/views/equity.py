@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -13,9 +13,9 @@ from bot.dashboard import queries as dq
 MELB_TZ = ZoneInfo("Australia/Melbourne")
 
 PERIOD_MAP = {
-    "7d": "7 days",
-    "30d": "30 days",
-    "90d": "90 days",
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
 }
 
 
@@ -39,7 +39,7 @@ class EquityViews:
         if period == "all":
             rows = await self._pool.fetch(dq.GET_EQUITY_CURVE_ALL)
         else:
-            interval = PERIOD_MAP.get(period, "30 days")
+            interval = PERIOD_MAP.get(period, timedelta(days=30))
             rows = await self._pool.fetch(dq.GET_EQUITY_CURVE, interval)
 
         labels = []

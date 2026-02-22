@@ -25,6 +25,13 @@ def validate_signal(
     Zero API calls. Pure Python logic. Fully testable.
     """
 
+    # Rule 0: Must have a direction
+    if signal.direction is None:
+        return ValidationResult(
+            passed=False,
+            reason="Signal has no direction (long/short)",
+        )
+
     # Rule 1: Minimum confidence threshold
     if signal.confidence < settings.min_confidence:
         return ValidationResult(
@@ -33,7 +40,7 @@ def validate_signal(
         )
 
     # Rule 2: Must have entry, stop loss, and at least one take profit
-    if not all([signal.entry_price, signal.stop_loss, signal.take_profit_1]):
+    if any(v is None for v in [signal.entry_price, signal.stop_loss, signal.take_profit_1]):
         return ValidationResult(
             passed=False,
             reason="Missing entry_price, stop_loss, or take_profit_1",

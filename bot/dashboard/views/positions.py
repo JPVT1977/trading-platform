@@ -19,7 +19,10 @@ class PositionsViews:
     async def positions_page(self, request: web.Request) -> dict:
         """GET /dashboard/positions — full positions page."""
         tab = request.query.get("tab", "open")
-        page = max(1, int(request.query.get("page", "1")))
+        try:
+            page = max(1, int(request.query.get("page", "1")))
+        except (ValueError, TypeError):
+            page = 1
         offset = (page - 1) * PAGE_SIZE
 
         open_positions = await self._pool.fetch(dq.GET_OPEN_POSITIONS)
@@ -44,7 +47,10 @@ class PositionsViews:
     async def positions_partial(self, request: web.Request) -> web.Response:
         """GET /api/positions — HTMX partial for table refresh."""
         tab = request.query.get("tab", "open")
-        page = max(1, int(request.query.get("page", "1")))
+        try:
+            page = max(1, int(request.query.get("page", "1")))
+        except (ValueError, TypeError):
+            page = 1
         offset = (page - 1) * PAGE_SIZE
 
         open_positions = await self._pool.fetch(dq.GET_OPEN_POSITIONS)

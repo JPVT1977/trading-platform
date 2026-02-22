@@ -19,7 +19,10 @@ class SignalsViews:
     async def signals_page(self, request: web.Request) -> dict:
         """GET /dashboard/signals — full signals page."""
         filter_type = request.query.get("filter", "all")
-        page = max(1, int(request.query.get("page", "1")))
+        try:
+            page = max(1, int(request.query.get("page", "1")))
+        except (ValueError, TypeError):
+            page = 1
         offset = (page - 1) * PAGE_SIZE
 
         signals, total = await self._fetch_signals(filter_type, PAGE_SIZE, offset)
@@ -38,7 +41,10 @@ class SignalsViews:
     async def signals_partial(self, request: web.Request) -> web.Response:
         """GET /api/signals — HTMX partial for table content."""
         filter_type = request.query.get("filter", "all")
-        page = max(1, int(request.query.get("page", "1")))
+        try:
+            page = max(1, int(request.query.get("page", "1")))
+        except (ValueError, TypeError):
+            page = 1
         offset = (page - 1) * PAGE_SIZE
 
         signals, total = await self._fetch_signals(filter_type, PAGE_SIZE, offset)

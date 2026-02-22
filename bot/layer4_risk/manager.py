@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -16,6 +15,8 @@ from bot.models import (
     TradeOrder,
 )
 
+STARTING_EQUITY = 5000.0
+
 
 class RiskManager:
     """Hard-coded risk management rules. No signal overrides these. Ever."""
@@ -25,11 +26,18 @@ class RiskManager:
         self._db = db
         self._circuit_breaker_active = False
         self._circuit_breaker_reason: str | None = None
+        self._circuit_breaker_tripped_date: str | None = None
 
     def check_entry(
         self, signal: DivergenceSignal, portfolio: PortfolioState
     ) -> RiskCheckResult:
         """Run all risk checks before allowing a trade entry."""
+
+        # Auto-reset circuit breaker at start of new day
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._circuit_breaker_active and self._circuit_breaker_tripped_date != today:
+            logger.info("Circuit breaker auto-reset (new trading day)")
+            self.reset_circuit_breaker()
 
         # Check 1: Circuit breaker
         if self._circuit_breaker_active:
@@ -51,7 +59,7 @@ class RiskManager:
                 )
 
         # Check 3: Max open positions
-        active_states = {OrderState.SUBMITTED, OrderState.FILLED, OrderState.PARTIALLY_FILLED}
+        active_states = {OrderState.PENDING, OrderState.SUBMITTED, OrderState.FILLED, OrderState.PARTIALLY_FILLED}
         open_count = sum(1 for p in portfolio.open_positions if p.state in active_states)
         if open_count >= self._settings.max_open_positions:
             return RiskCheckResult(
@@ -92,7 +100,7 @@ class RiskManager:
 
         Returns the quantity to trade (in base asset units).
         """
-        if not signal.entry_price or not signal.stop_loss:
+        if signal.entry_price is None or signal.stop_loss is None:
             return 0.0
 
         # Risk amount = percentage of total equity
@@ -125,6 +133,12 @@ class RiskManager:
 
         pool = self._db.pool
 
+        # Get cumulative realized P&L for dynamic equity
+        cumulative_pnl = float(
+            await pool.fetchval(queries.SELECT_CUMULATIVE_PNL) or 0.0
+        )
+        total_equity = STARTING_EQUITY + cumulative_pnl
+
         # Get open orders
         rows = await pool.fetch(queries.SELECT_OPEN_ORDERS)
         open_positions = [
@@ -153,11 +167,9 @@ class RiskManager:
         daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
         daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
 
-        # TODO: Fetch actual balance from exchange in live mode
-        # Paper trading starting balance
         return PortfolioState(
-            total_equity=5000.0,
-            available_balance=5000.0,
+            total_equity=total_equity,
+            available_balance=total_equity,
             open_positions=open_positions,
             daily_pnl=daily_pnl,
             daily_trades=daily_trades,
@@ -167,13 +179,15 @@ class RiskManager:
         """Activate the circuit breaker — halt all trading."""
         self._circuit_breaker_active = True
         self._circuit_breaker_reason = reason
+        self._circuit_breaker_tripped_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         logger.critical(f"CIRCUIT BREAKER TRIPPED: {reason}")
 
     def reset_circuit_breaker(self) -> None:
-        """Manually reset the circuit breaker."""
+        """Reset the circuit breaker."""
         self._circuit_breaker_active = False
         self._circuit_breaker_reason = None
-        logger.warning("Circuit breaker reset manually")
+        self._circuit_breaker_tripped_date = None
+        logger.warning("Circuit breaker reset")
 
     @property
     def is_circuit_breaker_active(self) -> bool:

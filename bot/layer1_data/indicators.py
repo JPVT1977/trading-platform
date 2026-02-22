@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import talib
 
@@ -11,7 +9,7 @@ from bot.models import Candle, IndicatorSet
 
 def _nan_to_none(arr: np.ndarray) -> list[float | None]:
     """Convert numpy array to list, replacing NaN with None."""
-    return [None if (isinstance(v, float) and math.isnan(v)) else float(v) for v in arr]
+    return [None if np.isnan(v) else float(v) for v in arr]
 
 
 def compute_indicators(

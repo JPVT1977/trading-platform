@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time as time_mod
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -108,7 +109,7 @@ class ExecutionEngine:
                 )
 
             elif self._settings.trading_mode == TradingMode.PAPER:
-                order.exchange_order_id = f"paper-{signal.symbol}-{signal.timeframe}"
+                order.exchange_order_id = f"paper-{signal.symbol}-{signal.timeframe}-{int(time_mod.time())}"
                 logger.info(
                     f"PAPER TRADE: {side} {order.quantity:.6f} {order.symbol} "
                     f"@ {order.entry_price} | SL: {order.stop_loss} | TP1: {order.take_profit_1}"
@@ -126,6 +127,14 @@ class ExecutionEngine:
             order.state = fsm.state
             logger.error(f"Order submission failed for {order.symbol}: {e}")
             await self._telegram.send_error_alert(str(e), f"Order failed: {order.symbol}")
+            # Persist the failed order for auditing, then return None
+            try:
+                signal_id = await self._persist_signal(signal)
+                order.signal_id = signal_id
+                await self._persist_order(order)
+            except Exception as persist_err:
+                logger.error(f"Failed to persist error order: {persist_err}")
+            return None
 
         # Step 5: Persist to database
         try:
@@ -217,12 +226,13 @@ class ExecutionEngine:
             if not hit_sl and not hit_tp:
                 continue
 
+            # Use actual market price as exit (more realistic than exact SL/TP level)
+            exit_price = current_price
+
             # Calculate P&L
             if direction == "long":
-                exit_price = stop_loss if hit_sl else take_profit_1
                 pnl = (exit_price - entry_price) * quantity
             else:
-                exit_price = stop_loss if hit_sl else take_profit_1
                 pnl = (entry_price - exit_price) * quantity
 
             # Simulate fees (0.1% round trip — entry + exit)
@@ -231,10 +241,10 @@ class ExecutionEngine:
             pnl_net = pnl - fees
             reason = "STOP LOSS" if hit_sl else "TAKE PROFIT"
 
-            # Close the order
+            # Close the order (now stores exit price)
             await pool.execute(
                 queries.UPDATE_ORDER_CLOSE,
-                order_id, pnl_net, fees,
+                order_id, pnl_net, fees, exit_price,
             )
 
             closed_count += 1

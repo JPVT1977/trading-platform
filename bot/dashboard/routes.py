@@ -28,7 +28,7 @@ def setup_routes(
     """Wire all dashboard routes to the aiohttp app."""
 
     auth = AuthViews(db_pool)
-    overview = OverviewViews(db_pool, settings)
+    overview = OverviewViews(db_pool, settings, risk_manager=risk_manager)
     signals = SignalsViews(db_pool)
     positions = PositionsViews(db_pool)
     risk = RiskViews(db_pool, settings, risk_manager)

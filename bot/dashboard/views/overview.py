@@ -10,9 +10,10 @@ from bot.dashboard import queries as dq
 
 class OverviewViews:
 
-    def __init__(self, db_pool, settings) -> None:
+    def __init__(self, db_pool, settings, risk_manager=None) -> None:
         self._pool = db_pool
         self._settings = settings
+        self._risk_manager = risk_manager
 
     @aiohttp_jinja2.template("overview.html")
     async def overview_page(self, request: web.Request) -> dict:
@@ -52,7 +53,7 @@ class OverviewViews:
         row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
-        total_equity = float(equity_row["total_equity"]) if equity_row else 10000.0
+        total_equity = float(equity_row["total_equity"]) if equity_row else 5000.0
         daily_pnl = float(row["daily_pnl"]) if row else 0.0
         daily_pnl_pct = (daily_pnl / total_equity * 100) if total_equity > 0 else 0.0
 
@@ -65,11 +66,10 @@ class OverviewViews:
         }
 
     def _get_circuit_breaker_status(self) -> dict:
-        """Get circuit breaker status from risk manager if available."""
-        risk_manager = self._settings._risk_manager if hasattr(self._settings, "_risk_manager") else None
-        if risk_manager and hasattr(risk_manager, "is_circuit_breaker_active"):
+        """Get circuit breaker status from risk manager."""
+        if self._risk_manager and hasattr(self._risk_manager, "is_circuit_breaker_active"):
             return {
-                "active": risk_manager.is_circuit_breaker_active,
-                "reason": getattr(risk_manager, "_circuit_breaker_reason", None),
+                "active": self._risk_manager.is_circuit_breaker_active,
+                "reason": getattr(self._risk_manager, "_circuit_breaker_reason", None),
             }
         return {"active": False, "reason": None}
