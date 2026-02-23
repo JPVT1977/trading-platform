@@ -101,3 +101,17 @@ class RiskViews:
         return aiohttp_jinja2.render_template(
             "partials/risk_stats.html", request, context
         )
+
+    async def reset_breaker(self, request: web.Request) -> web.Response:
+        """POST /api/risk/reset-breaker — manually reset circuit breaker."""
+        if not self._risk_manager:
+            return web.Response(text="Risk manager not available", status=500)
+
+        self._risk_manager.reset_circuit_breaker()
+        self._risk_manager.reset_drawdown_breaker()
+
+        # Return updated partial so HTMX swaps in the new state
+        context = await self._get_risk_data(request)
+        return aiohttp_jinja2.render_template(
+            "partials/risk_stats.html", request, context
+        )

@@ -70,6 +70,7 @@ def setup_routes(
     app.router.add_get("/api/signals", signals.signals_partial)
     app.router.add_get("/api/positions", positions.positions_partial)
     app.router.add_get("/api/risk", risk.risk_partial)
+    app.router.add_post("/api/risk/reset-breaker", risk.reset_breaker)
     app.router.add_get("/api/equity", equity.equity_api)
     app.router.add_get("/api/brokers", brokers.brokers_partial)
     app.router.add_post("/api/brokers/test", brokers.broker_test)

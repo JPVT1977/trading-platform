@@ -10,6 +10,14 @@
     </div>
     {% if circuit_breaker.active %}
     <p class="text-danger" style="font-size:14px;">{{ circuit_breaker.reason }}</p>
+    <button hx-post="/api/risk/reset-breaker"
+            hx-target="#risk-content"
+            hx-swap="innerHTML"
+            hx-confirm="Reset the circuit breaker and resume trading?"
+            class="btn-reset-breaker"
+            style="margin-top:12px; padding:8px 20px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); border-radius:8px; color:#fca5a5; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:600; cursor:pointer;">
+        Reset Circuit Breaker
+    </button>
     {% else %}
     <p class="text-muted text-sm">All risk checks passing. Trading is active.</p>
     {% endif %}
