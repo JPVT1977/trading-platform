@@ -91,6 +91,140 @@
     </div>
 </div>
 
+<!-- Info Panels: Trading Hours + Risk Model -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+
+    <!-- Trading Hours Panel -->
+    <div class="card">
+        <div class="card-header" onclick="var el=document.getElementById('info-hours'); el.style.display=el.style.display==='none'?'block':'none';" style="cursor:pointer;">
+            <h2 class="card-title">Trading Hours (Melbourne AEST)</h2>
+            <span class="text-muted text-sm">click to expand</span>
+        </div>
+        <div id="info-hours" style="display:none; padding:0 16px 16px;">
+            <table style="width:100%; font-size:13px;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; padding:6px 8px;">Market</th>
+                        <th style="text-align:left; padding:6px 8px;">What We Trade</th>
+                        <th style="text-align:left; padding:6px 8px;">Open</th>
+                        <th style="text-align:left; padding:6px 8px; color:#f87171;">Closed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding:6px 8px; font-weight:600;">Crypto</td>
+                        <td style="padding:6px 8px;" class="text-muted">BTC/USDT (Binance)</td>
+                        <td style="padding:6px 8px; color:#4ade80;">24/7 &mdash; never closes</td>
+                        <td style="padding:6px 8px; color:#4ade80;">&mdash;</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 8px; font-weight:600;">Forex</td>
+                        <td style="padding:6px 8px;" class="text-muted">15 currency pairs</td>
+                        <td style="padding:6px 8px;">Mon 7:00am &ndash; Sat 7:00am</td>
+                        <td style="padding:6px 8px; color:#f87171; font-weight:600;">Sat 7am &ndash; Mon 7am</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 8px; font-weight:600;">Metals</td>
+                        <td style="padding:6px 8px;" class="text-muted">Gold, Silver</td>
+                        <td style="padding:6px 8px;">Mon 7:00am &ndash; Sat 7:00am</td>
+                        <td style="padding:6px 8px; color:#f87171; font-weight:600;">Sat 7am &ndash; Mon 7am<br><span class="text-sm" style="color:#fbbf24;">Daily break ~8&ndash;9am</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 8px; font-weight:600;">Energy</td>
+                        <td style="padding:6px 8px;" class="text-muted">WTI Oil, Brent, Nat Gas, Copper</td>
+                        <td style="padding:6px 8px;">Mon 8:00am &ndash; Sat 7:00am</td>
+                        <td style="padding:6px 8px; color:#f87171; font-weight:600;">Sat 7am &ndash; Mon 8am<br><span class="text-sm" style="color:#fbbf24;">Daily break ~7&ndash;8am</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 8px; font-weight:600;">Indices</td>
+                        <td style="padding:6px 8px;" class="text-muted">S&P500, Nasdaq, Dow, ASX200, DAX, FTSE, Nikkei, Russell</td>
+                        <td style="padding:6px 8px;">Mon ~8:00am &ndash; Sat ~7:00am</td>
+                        <td style="padding:6px 8px; color:#f87171; font-weight:600;">Sat ~7am &ndash; Mon ~8am<br><span class="text-sm" style="color:#fbbf24;">Daily breaks vary (15&ndash;60 min)</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 8px; font-weight:600;">Bonds</td>
+                        <td style="padding:6px 8px;" class="text-muted">US 10-Year Treasury</td>
+                        <td style="padding:6px 8px;">Mon ~8:00am &ndash; Sat ~7:00am</td>
+                        <td style="padding:6px 8px; color:#f87171; font-weight:600;">Sat ~7am &ndash; Mon ~8am<br><span class="text-sm" style="color:#fbbf24;">Daily break ~7&ndash;8am</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div style="margin-top:12px; padding:10px 12px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:6px;">
+                <span style="color:#f87171; font-weight:600;">Weekend gap risk:</span>
+                <span class="text-sm text-muted">
+                    Positions held over closed periods carry risk &mdash; price can jump when the market reopens
+                    and stop losses won't trigger until trading resumes. The bot does not close positions before weekends.
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk Model Panel -->
+    <div class="card">
+        <div class="card-header" onclick="var el=document.getElementById('info-risk'); el.style.display=el.style.display==='none'?'block':'none';" style="cursor:pointer;">
+            <h2 class="card-title">Risk Model &amp; Rules</h2>
+            <span class="text-muted text-sm">click to expand</span>
+        </div>
+        <div id="info-risk" style="display:none; padding:0 16px 16px;">
+            <div style="font-size:13px; line-height:1.7;">
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">How much do we risk per trade?</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    Each trade risks <strong style="color:#e2e8f0;">2% of the broker's equity</strong>.
+                    On a A$10,000 account that's A$200 max loss per trade.
+                    Position size is calculated using ATR (Average True Range) so the stop loss
+                    is wider in volatile markets and tighter in calm ones &mdash; the dollar risk stays the same.
+                </p>
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">How are stop losses set?</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    Stop losses are placed based on the instrument's ATR &mdash; a measure of how much
+                    the price typically moves. This means stops adapt to each market's volatility
+                    rather than using fixed pip/dollar amounts. The bot verifies every stop is on the
+                    correct side of the entry price.
+                </p>
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Maximum positions allowed</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    <strong style="color:#e2e8f0;">4 positions per broker</strong> (Binance: 4, OANDA: 4 = 8 total max).<br>
+                    Within each broker, a maximum of <strong style="color:#e2e8f0;">4 same-direction forex</strong>,
+                    <strong style="color:#e2e8f0;">3 index</strong>, and
+                    <strong style="color:#e2e8f0;">3 commodity</strong> trades can be open at once
+                    to limit correlated exposure. No duplicate positions on the same symbol.
+                </p>
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">What about leverage?</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    Each instrument has a per-position leverage cap:
+                    <strong style="color:#e2e8f0;">Forex 20&ndash;30x</strong>,
+                    <strong style="color:#e2e8f0;">Commodities/Indices 10&ndash;20x</strong>,
+                    <strong style="color:#e2e8f0;">Crypto 1x</strong> (spot, no leverage).
+                    The "leverage" number on the dashboard is the total notional exposure
+                    divided by equity &mdash; it goes up with more open positions and comes back
+                    down when trades close.
+                </p>
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Emergency safety nets</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    <strong style="color:#fbbf24;">Daily loss circuit breaker:</strong>
+                    If losses exceed <strong style="color:#e2e8f0;">5% of equity</strong> in a single day,
+                    all new trading stops automatically until the next day.<br>
+                    <strong style="color:#f87171;">Drawdown kill switch:</strong>
+                    A persistent emergency stop that requires manual override to resume trading.
+                </p>
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Starting capital</div>
+                <p class="text-muted" style="margin:0 0 0;">
+                    Binance: <strong style="color:#e2e8f0;">A$5,000</strong> &nbsp;+&nbsp;
+                    OANDA: <strong style="color:#e2e8f0;">A$10,000</strong> &nbsp;=&nbsp;
+                    <strong style="color:#e2e8f0;">A$15,000 total</strong>
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
 <!-- Two-column: Recent Signals + Analysis Cycles -->
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 
