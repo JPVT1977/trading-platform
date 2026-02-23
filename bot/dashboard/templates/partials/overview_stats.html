@@ -9,11 +9,13 @@
         <div class="stat-label">Equity</div>
         <div class="stat-value neutral text-mono" style="font-size:22px;">A${{ "%.2f" | format(bs.total_equity) }}</div>
         <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
-            <span>At Risk: A${{ "%.2f" | format(bs.in_trades) }}</span>
+            <span>In Trades: A${{ "%.2f" | format(bs.in_trades) }}</span>
             &nbsp;|&nbsp;
             <span>Avail: A${{ "%.2f" | format(bs.available) }}</span>
         </div>
         <div class="stat-breakdown text-sm" style="margin-top:4px;">
+            <span class="text-muted">At Risk: A${{ "%.2f" | format(bs.at_risk) }}</span>
+            &nbsp;|&nbsp;
             <span class="{{ 'text-danger' if bs.total_leverage > 10 else 'text-warning' if bs.total_leverage > 5 else 'text-muted' }}">
                 Leverage: {{ "%.1f" | format(bs.total_leverage) }}x
             </span>
@@ -55,11 +57,13 @@
         <div class="stat-label">Combined Equity</div>
         <div class="stat-value neutral text-mono">A${{ "%.2f" | format(stats.total_equity) }}</div>
         <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
-            <span>At Risk: A${{ "%.2f" | format(stats.in_trades) }}</span>
+            <span>In Trades: A${{ "%.2f" | format(stats.in_trades) }}</span>
             &nbsp;|&nbsp;
             <span>Available: A${{ "%.2f" | format(stats.available) }}</span>
         </div>
         <div class="stat-breakdown text-sm" style="margin-top:4px;">
+            <span class="text-muted">At Risk: A${{ "%.2f" | format(stats.at_risk) }}</span>
+            &nbsp;|&nbsp;
             <span class="{{ 'text-danger' if stats.total_leverage > 10 else 'text-warning' if stats.total_leverage > 5 else 'text-muted' }}">
                 Leverage: {{ "%.1f" | format(stats.total_leverage) }}x
             </span>
