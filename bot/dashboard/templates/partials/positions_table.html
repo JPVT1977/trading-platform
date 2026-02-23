@@ -27,7 +27,7 @@
                     <th>P&L</th>
                     <th>SL</th>
                     <th>TP1</th>
-                    <th>Value</th>
+                    <th>Risk</th>
                     <th>State</th>
                     <th>Opened</th>
                     <th>Duration</th>
@@ -66,7 +66,7 @@
                     </td>
                     <td class="mono">{{ "%.2f" | format(p.stop_loss) }}</td>
                     <td class="mono">{{ "%.2f" | format(p.take_profit_1) }}</td>
-                    <td class="mono">${{ "%.2f" | format(p.notional_usd) if p.notional_usd is defined else "—" }}</td>
+                    <td class="mono">${{ "%.2f" | format(p.risk_usd) if p.risk_usd is defined else "—" }}</td>
                     <td><span class="badge badge-info">{{ p.state }}</span></td>
                     <td class="mono text-sm">{{ (p.created_at|to_melb).strftime('%m-%d %H:%M') }}</td>
                     <td class="mono text-sm text-muted">

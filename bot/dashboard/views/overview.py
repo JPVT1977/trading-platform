@@ -96,9 +96,9 @@ class OverviewViews:
         }
 
     async def _get_open_position_data(self) -> tuple[float, float]:
-        """Fetch live prices and calculate unrealized P&L and total notional for open positions.
+        """Fetch live prices and calculate unrealized P&L and capital at risk.
 
-        Returns (unrealized_pnl, total_notional_usd).
+        Returns (unrealized_pnl, total_risk_usd).
         """
         if not self._router:
             return 0.0, 0.0
@@ -119,20 +119,24 @@ class OverviewViews:
                 except Exception:
                     pass
 
-            # Calculate unrealized P&L and total notional
+            # Calculate unrealized P&L and capital at risk
             total_unrealized = 0.0
-            total_notional = 0.0
+            total_risk = 0.0
             for p in positions:
                 entry = float(p["entry_price"])
                 qty = float(p["quantity"])
+                sl = float(p["stop_loss"])
 
                 try:
                     inst = get_instrument(p["symbol"])
-                    quote_rate = _QUOTE_TO_USD.get(inst.quote_currency, 1.0)
+                    quote_rate = _QUOTE_TO_USD.get(
+                        inst.quote_currency, 1.0,
+                    )
                 except Exception:
                     quote_rate = 1.0
 
-                total_notional += qty * entry * quote_rate
+                # Capital at risk = qty * distance to stop
+                total_risk += qty * abs(entry - sl) * quote_rate
 
                 current_price = tickers.get(p["symbol"])
                 if current_price is None:
@@ -142,7 +146,7 @@ class OverviewViews:
                 else:
                     total_unrealized += (entry - current_price) * qty
 
-            return total_unrealized, total_notional
+            return total_unrealized, total_risk
         except Exception as e:
             logger.warning(f"Failed to calculate open position data: {e}")
             return 0.0, 0.0

@@ -69,16 +69,18 @@ class PositionsViews:
                 row["unrealized_pnl"] = None
                 row["pnl_pct"] = None
 
-            # Calculate notional value in USD
+            # Calculate capital at risk in USD (qty * stop distance)
             entry = float(p["entry_price"])
             qty = float(p["quantity"])
-            notional_local = qty * entry
+            sl = float(p["stop_loss"])
             try:
                 inst = get_instrument(p["symbol"])
-                quote_rate = _QUOTE_TO_USD.get(inst.quote_currency, 1.0)
+                quote_rate = _QUOTE_TO_USD.get(
+                    inst.quote_currency, 1.0,
+                )
             except Exception:
                 quote_rate = 1.0
-            row["notional_usd"] = notional_local * quote_rate
+            row["risk_usd"] = qty * abs(entry - sl) * quote_rate
             enriched.append(row)
         return enriched
 
