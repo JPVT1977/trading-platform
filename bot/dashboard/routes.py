@@ -14,6 +14,7 @@ from bot.dashboard.views.equity import EquityViews
 from bot.dashboard.views.overview import OverviewViews
 from bot.dashboard.views.performance import PerformanceViews
 from bot.dashboard.views.positions import PositionsViews
+from bot.dashboard.views.public_stats import PublicStatsViews
 from bot.dashboard.views.risk import RiskViews
 from bot.dashboard.views.settings_view import SettingsViews
 from bot.dashboard.views.signals import SignalsViews
@@ -43,6 +44,7 @@ def setup_routes(
     performance = PerformanceViews(db_pool)
     settings_view = SettingsViews(settings)
     brokers = BrokersViews(db_pool, settings, router=router)
+    public_stats = PublicStatsViews(db_pool, settings, router=router)
 
     # Auth
     app.router.add_get("/login", auth.login_page)
@@ -74,6 +76,10 @@ def setup_routes(
     app.router.add_get("/api/performance", performance.performance_partial)
     app.router.add_get("/api/performance/chart", performance.performance_chart_api)
     app.router.add_get("/api/heartbeat", _make_heartbeat_handler(db_pool))
+
+    # Public (token-protected, no login)
+    app.router.add_get("/public/stats", public_stats.stats_page)
+    app.router.add_get("/public/stats/partial", public_stats.stats_partial)
 
     # Root redirect
     app.router.add_get("/", _redirect_to_dashboard)

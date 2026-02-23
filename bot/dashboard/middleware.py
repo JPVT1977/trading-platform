@@ -16,6 +16,7 @@ PUBLIC_PATHS = frozenset({
 
 PUBLIC_PREFIXES = (
     "/static/",
+    "/public/",
 )
 
 

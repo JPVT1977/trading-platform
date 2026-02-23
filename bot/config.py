@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 
     # --- Dashboard ---
     dashboard_secret_key: str = ""
+    public_stats_token: str = ""
     dashboard_user_1_email: str = "jp@nucleus360.com.au"
     dashboard_user_1_password: str = ""
     dashboard_user_1_name: str = "JP"

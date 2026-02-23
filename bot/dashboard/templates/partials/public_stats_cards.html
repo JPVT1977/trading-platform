@@ -1,0 +1,44 @@
+<div class="stat-card">
+    <div class="stat-label">Total Equity</div>
+    <div class="stat-value neutral">A${{ "%.2f" | format(stats.total_equity) }}</div>
+    <div class="stat-breakdown">
+        At Risk: A${{ "%.2f" | format(stats.in_trades) }}
+        &nbsp;&middot;&nbsp;
+        Available: A${{ "%.2f" | format(stats.available) }}
+    </div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">Leverage</div>
+    <span class="leverage-badge {{ 'leverage-high' if stats.total_leverage > 10 else 'leverage-warn' if stats.total_leverage > 5 else 'leverage-safe' }}">
+        {{ "%.1f" | format(stats.total_leverage) }}x
+    </span>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">Daily P&L</div>
+    <div class="stat-value {{ 'positive' if stats.daily_pnl >= 0 else 'negative' }}">
+        {{ "+" if stats.daily_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.daily_pnl) }}
+    </div>
+    <div class="stat-change {{ 'text-success' if stats.daily_pnl_pct >= 0 else 'text-danger' }}">
+        {{ "+" if stats.daily_pnl_pct >= 0 else "" }}{{ "%.2f" | format(stats.daily_pnl_pct) }}%
+    </div>
+    <div class="stat-breakdown">
+        Realized: {{ "+" if stats.realized_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.realized_pnl) }}
+        &nbsp;&middot;&nbsp;
+        <span class="{{ 'text-success' if stats.unrealized_pnl >= 0 else 'text-danger' }}">
+            Open: {{ "+" if stats.unrealized_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.unrealized_pnl) }}
+        </span>
+    </div>
+</div>
+
+<div class="stat-card" style="display:flex; gap:24px;">
+    <div>
+        <div class="stat-label">Positions</div>
+        <div class="stat-value neutral" style="font-size:24px;">{{ stats.open_positions }}</div>
+    </div>
+    <div>
+        <div class="stat-label">Trades Today</div>
+        <div class="stat-value neutral" style="font-size:24px;">{{ stats.daily_trades }}</div>
+    </div>
+</div>
