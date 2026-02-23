@@ -359,6 +359,27 @@ class TestRule9OscillatorStack:
         assert not result.passed
         assert "confirming indicator" in result.reason
 
+    def test_rejects_empty_confirming_list(self, settings):
+        """Reject signals with empty confirming_indicators list (not None)."""
+        indicators = _make_indicators()
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+            confirming_indicators=[],
+            swing_length_bars=18,
+            divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "confirming indicator" in result.reason
+
     def test_accepts_two_confirming_indicators(self, settings):
         """Accept signals with 2+ confirming indicators."""
         indicators = _make_indicators()
@@ -634,6 +655,41 @@ class TestRule14CandleGate:
             "piercing": [0] * n,
             "inverted_hammer": [0] * n,
             "shooting_star": [0] * n,
+            "evening_star": [0] * n,
+            "dark_cloud": [0] * n,
+            "hanging_man": [0] * n,
+        }
+        indicators = _make_indicators(candle_patterns=patterns)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.SHORT,
+            entry_price=42000,
+            stop_loss=42800,
+            take_profit_1=40400,
+            symbol="BTC/USDT",
+            timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18,
+            divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "reversal candlestick" not in result.reason
+
+    def test_accepts_shooting_star_for_short(self, settings):
+        """Accept short signals with shooting star (+100) in last 3 bars.
+
+        TA-Lib single-direction bearish patterns return +100 (not -100).
+        """
+        n = 30
+        patterns = {
+            "hammer": [0] * n,
+            "engulfing": [0] * n,
+            "morning_star": [0] * n,
+            "piercing": [0] * n,
+            "inverted_hammer": [0] * n,
+            "shooting_star": [0] * (n - 1) + [100],  # +100 = pattern detected
             "evening_star": [0] * n,
             "dark_cloud": [0] * n,
             "hanging_man": [0] * n,

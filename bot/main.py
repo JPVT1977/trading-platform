@@ -47,7 +47,7 @@ from bot.layer5_monitoring.logger import setup_logger
 from bot.layer5_monitoring.outcome_tracker import track_signal_outcomes
 from bot.layer5_monitoring.sms import SMSClient
 from bot.layer5_monitoring.telegram import TelegramClient
-from bot.models import AnalysisCycleResult, DivergenceSignal, SignalDirection
+from bot.models import AnalysisCycleResult, DivergenceSignal, SignalDirection, ValidationResult
 
 # Track last candle timestamp per symbol/timeframe to determine forming vs closed
 _last_candle_times: dict[str, str] = {}
@@ -415,6 +415,16 @@ async def analysis_cycle(
                 div_score = scored.score
                 div_breakdown = scored.breakdown
 
+                # Score gate: apply before persist so DB reflects final status
+                if validation.passed and div_score < settings.min_divergence_score:
+                    validation = ValidationResult(
+                        passed=False,
+                        reason=(
+                            f"Score {div_score:.1f} below minimum "
+                            f"{settings.min_divergence_score}"
+                        ),
+                    )
+
                 # Persist EVERY detected signal immediately (validated or not)
                 signal_id = await _persist_signal(
                     db, signal, validation.passed,
@@ -427,17 +437,6 @@ async def analysis_cycle(
                 if not validation.passed:
                     logger.info(f"Signal rejected: {validation.reason}")
                     result.symbol_details[candle_key] = f"signal_rejected ({validation.reason})"
-                    continue
-
-                # Score gate: reject signals below minimum divergence score
-                if div_score < settings.min_divergence_score:
-                    logger.info(
-                        f"Signal score too low: {div_score:.1f} < "
-                        f"{settings.min_divergence_score} — {div_breakdown}"
-                    )
-                    result.symbol_details[candle_key] = (
-                        f"signal_rejected (score {div_score:.1f} < {settings.min_divergence_score})"
-                    )
                     continue
 
                 result.signals_validated += 1
@@ -506,11 +505,16 @@ async def analysis_cycle(
                         if not _active_setups[setup_key]:
                             del _active_setups[setup_key]
 
+                        # Score the confirmed signal
+                        confirmed_scored = compute_score(confirmed, indicators, settings)
+
                         # Persist the confirmed signal
                         confirmed_signal_id = await _persist_signal(
                             db, confirmed, True,
                             "Multi-TF confirmed (4h setup + 1h trigger)",
                             broker_id=broker_id,
+                            divergence_score=confirmed_scored.score,
+                            score_breakdown=confirmed_scored.breakdown,
                         )
 
                         logger.info(

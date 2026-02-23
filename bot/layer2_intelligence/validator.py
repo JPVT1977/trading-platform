@@ -146,7 +146,7 @@ def validate_signal(
                     )
 
     # Rule 9: Oscillator stack — require minimum confirming indicators
-    if signal.divergence_detected and signal.confirming_indicators:
+    if signal.divergence_detected and signal.confirming_indicators is not None:
         if len(signal.confirming_indicators) < settings.min_confirming_indicators:
             return ValidationResult(
                 passed=False,
@@ -159,7 +159,7 @@ def validate_signal(
     # Rule 10: Swing length — reject too-short divergences
     if signal.swing_length_bars is not None:
         min_bars = (
-            settings.min_swing_bars_4h if signal.timeframe == "4h"
+            settings.min_swing_bars_4h if "4h" in signal.timeframe
             else settings.min_swing_bars_1h
         )
         if signal.swing_length_bars < min_bars:
@@ -240,13 +240,14 @@ def validate_signal(
                 if any(v > 0 for v in vals):
                     found_pattern = True
         elif signal.direction == SignalDirection.SHORT:
+            # TA-Lib single-direction bearish patterns return +100 when detected
             for name in bearish_patterns:
                 if name in indicators.candle_patterns:
                     vals = indicators.candle_patterns[name][-lookback:]
-                    if any(v < 0 for v in vals):
+                    if any(v != 0 for v in vals):
                         found_pattern = True
                         break
-            # Also check bearish engulfing (-100)
+            # Engulfing is bidirectional: -100 = bearish, +100 = bullish
             if not found_pattern and "engulfing" in indicators.candle_patterns:
                 vals = indicators.candle_patterns["engulfing"][-lookback:]
                 if any(v < 0 for v in vals):

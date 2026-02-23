@@ -24,9 +24,9 @@ ANALYSIS METHODOLOGY:
   - EMA short > EMA medium > EMA long = uptrend
   - EMA short < EMA medium < EMA long = downtrend
   - Mixed = ranging/transitioning
-- Bullish divergences are STRONGER when found in a downtrend or at support
-- Bearish divergences are STRONGER when found in an uptrend or at resistance
-- Divergences AGAINST the EMA trend have lower reliability — reduce confidence
+- Bullish divergences are STRONGER when found in a downtrend or at support (reversal setup)
+- Bearish divergences are STRONGER when found in an uptrend or at resistance (reversal setup)
+- Hidden divergences (continuation) in a ranging market have lower reliability
 
 INDICATOR NOTES:
 - CCI (Commodity Channel Index): Oscillates around 0. Values >100 = overbought,\

@@ -39,7 +39,7 @@ def _score_swing_length(signal: DivergenceSignal) -> float:
     if bars is None:
         return 0.0
 
-    if signal.timeframe == "4h":
+    if "4h" in signal.timeframe:
         ideal_low, ideal_high = 15, 25
     else:
         ideal_low, ideal_high = 10, 20
