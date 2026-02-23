@@ -1,8 +1,8 @@
 # Trading Platform - Developer Manual
 
-**Last Updated:** 22 February 2026
+**Last Updated:** 23 February 2026
 **Trading Mode:** Paper (testnet)
-**Deployment:** Fly.io Sydney region (`trading-bot`)
+**Deployment:** Fly.io Sydney region (`jpvt-trading-bot`)
 **GitHub:** JPVT1977/trading-platform
 
 ---
@@ -44,13 +44,13 @@
 flyctl deploy --remote-only
 
 # Check status
-flyctl status --app trading-bot
+flyctl status --app jpvt-trading-bot
 
 # View logs
-flyctl logs --app trading-bot --no-tail
+flyctl logs --app jpvt-trading-bot --no-tail
 
 # Set secrets
-flyctl secrets set ANTHROPIC_API_KEY=sk-ant-... --app trading-bot
+flyctl secrets set ANTHROPIC_API_KEY=sk-ant-... --app jpvt-trading-bot
 ```
 
 Push to `main` triggers auto-deploy via GitHub Actions.
