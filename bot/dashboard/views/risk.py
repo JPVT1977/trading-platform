@@ -20,13 +20,7 @@ class RiskViews:
         stats_row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
-        equity_val = float(equity_row["total_equity"]) if equity_row else 0
-        fallback = 5000.0
-        if self._settings.oanda_enabled:
-            fallback += self._settings.oanda_starting_equity
-        if getattr(self._settings, "ig_enabled", False):
-            fallback += self._settings.ig_starting_equity
-        total_equity = equity_val if equity_val > 0 else fallback
+        total_equity = float(equity_row["total_equity"]) if equity_row else 10000.0
         daily_pnl = float(stats_row["daily_pnl"]) if stats_row else 0.0
         open_count = int(stats_row["open_positions"]) if stats_row else 0
 

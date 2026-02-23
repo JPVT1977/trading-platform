@@ -79,15 +79,10 @@ GET_RECENT_CYCLES = """
 """
 
 GET_LATEST_EQUITY = """
-    SELECT
-        COALESCE(SUM(total_equity), 0) AS total_equity,
-        COALESCE(SUM(available_balance), 0) AS available_balance,
-        COALESCE(SUM(daily_pnl), 0) AS daily_pnl
-    FROM (
-        SELECT DISTINCT ON (broker) total_equity, available_balance, daily_pnl
-        FROM portfolio_snapshots
-        ORDER BY broker, time DESC
-    ) latest_per_broker
+    SELECT total_equity, available_balance, daily_pnl
+    FROM portfolio_snapshots
+    ORDER BY time DESC
+    LIMIT 1
 """
 
 # ---------------------------------------------------------------------------
@@ -182,26 +177,16 @@ GET_ACTIVE_CIRCUIT_BREAKER = """
 # ---------------------------------------------------------------------------
 
 GET_EQUITY_CURVE = """
-    SELECT
-        date_trunc('minute', time) AS time,
-        SUM(total_equity) AS total_equity,
-        SUM(available_balance) AS available_balance,
-        SUM(daily_pnl) AS daily_pnl
+    SELECT time, total_equity, available_balance, daily_pnl
     FROM portfolio_snapshots
     WHERE time >= NOW() - $1::interval
-    GROUP BY 1
-    ORDER BY 1 ASC
+    ORDER BY time ASC
 """
 
 GET_EQUITY_CURVE_ALL = """
-    SELECT
-        date_trunc('minute', time) AS time,
-        SUM(total_equity) AS total_equity,
-        SUM(available_balance) AS available_balance,
-        SUM(daily_pnl) AS daily_pnl
+    SELECT time, total_equity, available_balance, daily_pnl
     FROM portfolio_snapshots
-    GROUP BY 1
-    ORDER BY 1 ASC
+    ORDER BY time ASC
 """
 
 # ---------------------------------------------------------------------------
