@@ -237,10 +237,12 @@ class RiskManager:
         """
         if signal.entry_price is None or signal.stop_loss is None:
             return 0.0
+        if signal.entry_price <= 0:
+            return 0.0
 
         instrument = get_instrument(signal.symbol)
 
-        # Risk amount = percentage of total equity
+        # Risk amount in AUD (OANDA accounts are AUD-denominated)
         risk_amount = portfolio.total_equity * (self._settings.max_position_pct / 100)
 
         # Stop distance in pips
@@ -249,19 +251,19 @@ class RiskManager:
         if stop_pips == 0:
             return 0.0
 
-        # Convert pip_value to USD if quote currency is not USD
-        pip_value_usd = instrument.pip_value_per_unit * _QUOTE_TO_USD.get(
-            instrument.quote_currency, 1.0
+        # Convert pip_value to AUD to match account currency
+        pip_value_aud = instrument.pip_value_per_unit * _QUOTE_TO_AUD.get(
+            instrument.quote_currency, _USD_TO_AUD
         )
 
-        # Units = risk_amount_usd / (stop_pips * pip_value_usd_per_unit)
-        units = risk_amount / (stop_pips * pip_value_usd)
+        # Units = risk_amount_aud / (stop_pips * pip_value_aud_per_unit)
+        units = risk_amount / (stop_pips * pip_value_aud)
 
-        # Cap at max leverage — convert entry_price to USD for non-USD quoted
-        entry_usd = signal.entry_price * _QUOTE_TO_USD.get(
-            instrument.quote_currency, 1.0
+        # Cap at max leverage — convert entry_price to AUD
+        entry_aud = signal.entry_price * _QUOTE_TO_AUD.get(
+            instrument.quote_currency, _USD_TO_AUD
         )
-        max_units = (portfolio.total_equity * instrument.max_leverage) / entry_usd
+        max_units = (portfolio.total_equity * instrument.max_leverage) / entry_aud
         units = min(units, max_units)
 
         # Round to whole units (OANDA accepts fractional but whole is cleaner)
