@@ -27,7 +27,7 @@
                     <th>P&L</th>
                     <th>SL</th>
                     <th>TP1</th>
-                    <th>Qty</th>
+                    <th>Value</th>
                     <th>State</th>
                     <th>Opened</th>
                     <th>Duration</th>
@@ -66,7 +66,7 @@
                     </td>
                     <td class="mono">{{ "%.2f" | format(p.stop_loss) }}</td>
                     <td class="mono">{{ "%.2f" | format(p.take_profit_1) }}</td>
-                    <td class="mono">{{ "%.6f" | format(p.quantity) }}</td>
+                    <td class="mono">${{ "%.2f" | format(p.notional_usd) if p.notional_usd is defined else "—" }}</td>
                     <td><span class="badge badge-info">{{ p.state }}</span></td>
                     <td class="mono text-sm">{{ (p.created_at|to_melb).strftime('%m-%d %H:%M') }}</td>
                     <td class="mono text-sm text-muted">
@@ -76,7 +76,8 @@
                 </tr>
                 <tr class="expand-content" id="expand-open-{{ p.id }}">
                     <td colspan="13">
-                        <strong>Trigger:</strong> {{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}
+                        <strong>Qty:</strong> {{ "%.6f" | format(p.quantity) }}
+                        &nbsp;|&nbsp; <strong>Trigger:</strong> {{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}
                         &nbsp;|&nbsp; <strong>Confidence:</strong> {{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%
                         <br><strong>Signal Reasoning:</strong> {{ p.reasoning or 'N/A' }}
                         {% if p.take_profit_2 %}<br><strong>TP2:</strong> {{ "%.2f" | format(p.take_profit_2) }}{% endif %}

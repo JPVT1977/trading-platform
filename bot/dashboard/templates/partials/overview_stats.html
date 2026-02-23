@@ -3,6 +3,11 @@
     <div class="stat-card">
         <div class="stat-label">Total Equity</div>
         <div class="stat-value neutral text-mono">${{ "%.2f" | format(stats.total_equity) }}</div>
+        <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
+            <span>In Trades: ${{ "%.2f" | format(stats.in_trades) }}</span>
+            &nbsp;|&nbsp;
+            <span>Available: ${{ "%.2f" | format(stats.available) }}</span>
+        </div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Daily P&L</div>

@@ -11,6 +11,8 @@ from aiohttp import web
 from loguru import logger
 
 from bot.dashboard import queries as dq
+from bot.instruments import get_instrument
+from bot.layer4_risk.manager import _QUOTE_TO_USD
 
 if TYPE_CHECKING:
     from bot.layer1_data.broker_router import BrokerRouter
@@ -60,6 +62,17 @@ class PositionsViews:
                 row["current_price"] = None
                 row["unrealized_pnl"] = None
                 row["pnl_pct"] = None
+
+            # Calculate notional value in USD
+            entry = float(p["entry_price"])
+            qty = float(p["quantity"])
+            notional_local = qty * entry
+            try:
+                inst = get_instrument(p["symbol"])
+                quote_rate = _QUOTE_TO_USD.get(inst.quote_currency, 1.0)
+            except Exception:
+                quote_rate = 1.0
+            row["notional_usd"] = notional_local * quote_rate
             enriched.append(row)
         return enriched
 
