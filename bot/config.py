@@ -71,11 +71,11 @@ class Settings(BaseSettings):
     max_drawdown_pct: float = 15.0
 
     # --- Per-broker risk overrides (applied independently per broker) ---
-    binance_max_open_positions: int = 4
+    binance_max_open_positions: int = 2
     binance_max_correlation_exposure: int = 3
     binance_min_confidence: float = 0.7
 
-    oanda_max_open_positions: int = 4
+    oanda_max_open_positions: int = 10
     oanda_max_correlation_exposure: int = 3
     oanda_min_confidence: float = 0.7
 
