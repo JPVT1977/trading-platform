@@ -66,7 +66,8 @@ class OverviewViews:
         row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
-        snapshot_equity = float(equity_row["total_equity"]) if equity_row else 5000.0
+        equity_val = float(equity_row["total_equity"]) if equity_row else 0
+        snapshot_equity = equity_val if equity_val > 0 else self._total_starting_equity()
         realized_pnl = float(row["daily_pnl"]) if row else 0.0
 
         # Calculate unrealized P&L from open positions using live prices
@@ -126,6 +127,15 @@ class OverviewViews:
         except Exception as e:
             logger.warning(f"Failed to calculate unrealized P&L: {e}")
             return 0.0
+
+    def _total_starting_equity(self) -> float:
+        """Combined starting equity across all enabled brokers."""
+        total = 5000.0  # Binance base
+        if self._settings.oanda_enabled:
+            total += self._settings.oanda_starting_equity
+        if getattr(self._settings, "ig_enabled", False):
+            total += self._settings.ig_starting_equity
+        return total
 
     def _get_circuit_breaker_status(self) -> dict:
         """Get circuit breaker status from risk manager."""
