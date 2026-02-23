@@ -110,9 +110,8 @@ class OverviewViews:
             "unrealized_pnl": unrealized_pnl,
             "open_positions": int(row["open_positions"]) if row else 0,
             "daily_trades": int(row["daily_trades"]) if row else 0,
-            "in_trades": total_margin,
-            "at_risk": in_trades,
-            "available": live_equity - total_margin,
+            "in_trades": in_trades,
+            "available": live_equity - in_trades,
             "total_leverage": total_leverage,
         }
 
