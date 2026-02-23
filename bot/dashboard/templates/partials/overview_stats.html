@@ -211,10 +211,19 @@
                     Each instrument has a per-position leverage cap:
                     <strong style="color:#e2e8f0;">Forex 20&ndash;30x</strong>,
                     <strong style="color:#e2e8f0;">Commodities/Indices 10&ndash;20x</strong>,
-                    <strong style="color:#e2e8f0;">Crypto 1x</strong> (spot, no leverage).
-                    The "leverage" number on the dashboard is the total notional exposure
-                    divided by equity &mdash; it goes up with more open positions and comes back
-                    down when trades close.
+                    <strong style="color:#e2e8f0;">Crypto 1x</strong> (spot, no leverage).<br>
+                    <strong style="color:#fbbf24;">Portfolio leverage cap: 10x</strong> &mdash;
+                    new trades are blocked if aggregate notional exposure / equity exceeds 10x
+                    on any broker. Crypto notional is capped at 50% of equity per position.
+                </p>
+
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Signal quality gates</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    <strong style="color:#e2e8f0;">ADX trend filter (crypto):</strong>
+                    Crypto signals are rejected when ADX &lt; 20 &mdash; the market is too choppy for divergence to work reliably.<br>
+                    <strong style="color:#e2e8f0;">Ranging market filter:</strong>
+                    All signals are rejected when ADX &lt; 25 AND the 200 EMA slope is flat (&lt; 0.05% over 10 bars)
+                    &mdash; divergence in a trendless, low-energy market has very low probability.
                 </p>
 
                 <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Emergency safety nets</div>

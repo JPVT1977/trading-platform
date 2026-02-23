@@ -3,6 +3,7 @@ from __future__ import annotations
 from loguru import logger
 
 from bot.config import Settings
+from bot.instruments import AssetClass, get_asset_class
 from bot.models import DivergenceSignal, IndicatorSet, ValidationResult
 
 
@@ -115,6 +116,34 @@ def validate_signal(
                 passed=False,
                 reason=f"Stop too wide: {atr_multiple:.1f}x ATR (maximum 5.0x)",
             )
+
+    # Rule 7: ADX trend strength — reject crypto signals in choppy markets
+    latest_adx = _last_valid(indicators.adx)
+    if latest_adx is not None:
+        asset_class = get_asset_class(signal.symbol)
+        if asset_class == AssetClass.CRYPTO and latest_adx < 20:
+            return ValidationResult(
+                passed=False,
+                reason=f"Crypto market too choppy: ADX={latest_adx:.1f} (minimum 20)",
+            )
+
+    # Rule 8: Counter-trend in ranging market — ADX < 25 + flat 200 EMA
+    if latest_adx is not None and latest_adx < 25 and signal.direction is not None:
+        ema_long_vals = [v for v in indicators.ema_long if v is not None]
+        if len(ema_long_vals) >= 10:
+            ema_now = ema_long_vals[-1]
+            ema_10_ago = ema_long_vals[-10]
+            if ema_10_ago != 0:
+                ema_slope_pct = abs(ema_now - ema_10_ago) / abs(ema_10_ago) * 100
+                if ema_slope_pct < 0.05:
+                    return ValidationResult(
+                        passed=False,
+                        reason=(
+                            f"Ranging market: ADX={latest_adx:.1f}, "
+                            f"EMA200 slope={ema_slope_pct:.3f}% "
+                            f"— divergence unreliable"
+                        ),
+                    )
 
     logger.debug(
         f"Signal validated: {signal.symbol}/{signal.timeframe} "

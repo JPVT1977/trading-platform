@@ -50,6 +50,9 @@ def _quote_to_aud_rate(quote_currency: str) -> float:
     return _QUOTE_TO_AUD.get(quote_currency, _USD_TO_AUD)
 
 
+# Maximum aggregate portfolio leverage across all open positions (per broker)
+MAX_PORTFOLIO_LEVERAGE = 10.0
+
 # Per-asset-class correlation limits — how many same-direction positions allowed
 _ASSET_CLASS_CORRELATION_LIMITS: dict[AssetClass, int] = {
     AssetClass.FOREX: 4,
@@ -184,6 +187,37 @@ class RiskManager:
                     ),
                 )
 
+        # Check 6: Portfolio leverage cap — reject if aggregate notional/equity >= 10x
+        total_notional_aud = 0.0
+        for p in portfolio.open_positions:
+            if p.state not in active_states:
+                continue
+            try:
+                inst = get_instrument(p.symbol)
+                aud_rate = _quote_to_aud_rate(inst.quote_currency)
+            except Exception:
+                aud_rate = _USD_TO_AUD
+            total_notional_aud += p.quantity * p.entry_price * aud_rate
+
+        # Convert equity to AUD for comparison
+        if broker_id == "binance":
+            equity_aud = portfolio.total_equity * _USD_TO_AUD
+        else:
+            equity_aud = portfolio.total_equity
+
+        if equity_aud > 0:
+            current_leverage = total_notional_aud / equity_aud
+            if current_leverage >= MAX_PORTFOLIO_LEVERAGE:
+                return RiskCheckResult(
+                    approved=False,
+                    reason=(
+                        f"Portfolio leverage {current_leverage:.1f}x "
+                        f"exceeds {MAX_PORTFOLIO_LEVERAGE:.0f}x cap "
+                        f"(notional=A${total_notional_aud:,.0f}, "
+                        f"equity=A${equity_aud:,.0f})"
+                    ),
+                )
+
         return RiskCheckResult(approved=True, reason="All risk checks passed")
 
     def calculate_position_size(
@@ -215,8 +249,8 @@ class RiskManager:
         # Position size = risk amount / risk per unit
         position_size = risk_amount / risk_per_unit
 
-        # Cap at 10% of portfolio value as absolute maximum
-        max_notional = portfolio.total_equity * 0.10
+        # Cap at 50% of portfolio value as absolute maximum
+        max_notional = portfolio.total_equity * 0.50
         max_quantity = max_notional / signal.entry_price if signal.entry_price > 0 else 0.0
         capped = position_size > max_quantity
         position_size = min(position_size, max_quantity)

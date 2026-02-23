@@ -50,6 +50,7 @@ def build_analysis_payload(
             "cci": _trim(indicators.cci, n),
             "williams_r": _trim(indicators.williams_r, n),
             "atr": _trim(indicators.atr, n),
+            "adx": _trim(indicators.adx, n),
             "ema": {
                 "short": _trim(indicators.ema_short, n),
                 "medium": _trim(indicators.ema_medium, n),

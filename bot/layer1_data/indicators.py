@@ -63,6 +63,9 @@ def compute_indicators(
     # Average True Range
     atr = talib.ATR(highs, lows, closes, timeperiod=settings.atr_period)
 
+    # Average Directional Index (trend strength)
+    adx = talib.ADX(highs, lows, closes, timeperiod=settings.atr_period)
+
     # Exponential Moving Averages
     ema_short = talib.EMA(closes, timeperiod=settings.ema_short)
     ema_medium = talib.EMA(closes, timeperiod=settings.ema_medium)
@@ -83,6 +86,7 @@ def compute_indicators(
         cci=_nan_to_none(cci),
         williams_r=_nan_to_none(williams_r),
         atr=_nan_to_none(atr),
+        adx=_nan_to_none(adx),
         ema_short=_nan_to_none(ema_short),
         ema_medium=_nan_to_none(ema_medium),
         ema_long=_nan_to_none(ema_long),

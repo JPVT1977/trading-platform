@@ -241,6 +241,102 @@ class TestRule6ATRStopDistance:
         assert "too wide" in result.reason
 
 
+class TestRule7ADXTrendStrength:
+    def test_rejects_crypto_with_low_adx(self, settings):
+        """Crypto signals should be rejected when ADX < 20 (choppy market)."""
+        indicators = _make_indicators(adx_last=15.0)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "choppy" in result.reason.lower()
+
+    def test_allows_crypto_with_strong_adx(self, settings):
+        """Crypto signals should pass when ADX >= 20."""
+        indicators = _make_indicators(adx_last=25.0)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "choppy" not in result.reason
+
+    def test_allows_forex_with_low_adx(self, settings):
+        """Forex signals should NOT be rejected by Rule 7 alone (ADX < 20)."""
+        indicators = _make_indicators(adx_last=15.0)
+        # Use non-flat EMA slope to avoid Rule 8 triggering
+        indicators.ema_long = [41000.0 + i * 10 for i in range(30)]
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=1.0800,
+            stop_loss=1.0740,
+            take_profit_1=1.0920,
+            symbol="EUR_USD",
+            timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "choppy" not in result.reason
+
+
+class TestRule8RangingMarket:
+    def test_rejects_ranging_market(self, settings):
+        """Signals should be rejected when ADX < 25 and EMA 200 is flat."""
+        # Flat EMA: all values the same → slope = 0%
+        indicators = _make_indicators(adx_last=20.0, ema_long_values=[41000.0] * 30)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="EUR_USD",
+            timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "Ranging" in result.reason
+
+    def test_allows_trending_market(self, settings):
+        """Signals should pass when EMA 200 has clear slope even with low ADX."""
+        # Trending EMA: slope > 0.05%
+        ema_vals = [41000.0 + i * 5.0 for i in range(30)]  # ~0.7% rise over 10 bars
+        indicators = _make_indicators(adx_last=22.0, ema_long_values=ema_vals)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="EUR_USD",
+            timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "Ranging" not in result.reason
+
+
 class TestFullValidation:
     def test_valid_bullish_signal_passes(self, bullish_signal, sample_indicator_set, settings):
         result = validate_signal(bullish_signal, sample_indicator_set, settings)
@@ -266,11 +362,14 @@ class TestFullValidation:
 def _make_indicators(
     rsi_last: float = 50.0,
     atr_last: float = 350.0,
+    adx_last: float = 30.0,
+    ema_long_values: list[float] | None = None,
 ) -> IndicatorSet:
     """Create a minimal IndicatorSet with specific last values."""
     from datetime import datetime
 
     n = 30
+    ema_long = ema_long_values if ema_long_values and len(ema_long_values) == n else [41000.0] * n
     return IndicatorSet(
         symbol="BTC/USDT",
         timeframe="4h",
@@ -286,9 +385,10 @@ def _make_indicators(
         cci=[0.0] * n,
         williams_r=[-50.0] * n,
         atr=[atr_last] * n,
+        adx=[adx_last] * n,
         ema_short=[42000.0] * n,
         ema_medium=[41800.0] * n,
-        ema_long=[41000.0] * n,
+        ema_long=ema_long,
         closes=[42000.0] * n,
         highs=[42200.0] * n,
         lows=[41800.0] * n,

@@ -65,6 +65,7 @@ class IndicatorSet(BaseModel):
     cci: list[float | None]
     williams_r: list[float | None]
     atr: list[float | None]
+    adx: list[float | None]
     ema_short: list[float | None]
     ema_medium: list[float | None]
     ema_long: list[float | None]
