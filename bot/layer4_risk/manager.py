@@ -326,8 +326,14 @@ class RiskManager:
         daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
         daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
 
-        # Check max drawdown against peak equity
-        await self._check_max_drawdown_for_broker(total_equity, starting_eq, broker_id)
+        # Check max drawdown against peak equity (snapshots are stored in AUD)
+        if broker_id == "binance":
+            equity_aud = total_equity * _USD_TO_AUD
+            starting_aud = starting_eq * _USD_TO_AUD
+        else:
+            equity_aud = total_equity
+            starting_aud = starting_eq
+        await self._check_max_drawdown_for_broker(equity_aud, starting_aud, broker_id)
 
         return PortfolioState(
             total_equity=total_equity,
