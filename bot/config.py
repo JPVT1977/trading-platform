@@ -30,10 +30,7 @@ class Settings(BaseSettings):
     exchange_sandbox: bool = True
 
     # --- Symbols & Timeframes ---
-    symbols: list[str] = Field(default=[
-        "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
-        "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT",
-    ])
+    symbols: list[str] = Field(default=["BTC/USDT"])
     timeframes: list[str] = Field(default=["1h", "4h"])
 
     # --- Claude API ---
