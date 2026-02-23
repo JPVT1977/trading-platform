@@ -1,7 +1,58 @@
-<!-- Stats Cards -->
+<!-- Per-Broker Stats Cards -->
+{% if broker_stats and broker_stats|length > 0 %}
+<div style="display:grid; grid-template-columns:repeat({{ broker_stats|length }}, 1fr); gap:16px; margin-bottom:16px;">
+    {% for bid, bs in broker_stats.items() %}
+    <div class="stat-card" style="padding:16px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+            <span class="badge {{ 'badge-warning' if bid == 'binance' else 'badge-info' }}">{{ bid|upper }}</span>
+        </div>
+        <div class="stat-label">Equity</div>
+        <div class="stat-value neutral text-mono" style="font-size:22px;">A${{ "%.2f" | format(bs.total_equity) }}</div>
+        <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
+            <span>At Risk: A${{ "%.2f" | format(bs.in_trades) }}</span>
+            &nbsp;|&nbsp;
+            <span>Avail: A${{ "%.2f" | format(bs.available) }}</span>
+        </div>
+        <div class="stat-breakdown text-sm" style="margin-top:4px;">
+            <span class="{{ 'text-danger' if bs.total_leverage > 10 else 'text-warning' if bs.total_leverage > 5 else 'text-muted' }}">
+                Leverage: {{ "%.1f" | format(bs.total_leverage) }}x
+            </span>
+        </div>
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.06); margin:10px 0;">
+        <div class="stat-label">Daily P&L</div>
+        <div class="stat-value {{ 'positive' if bs.daily_pnl >= 0 else 'negative' }}" style="font-size:18px;">
+            {{ "+" if bs.daily_pnl >= 0 else "" }}A${{ "%.2f" | format(bs.daily_pnl) }}
+            <span class="text-sm {{ 'text-success' if bs.daily_pnl_pct >= 0 else 'text-danger' }}">
+                ({{ "+" if bs.daily_pnl_pct >= 0 else "" }}{{ "%.2f" | format(bs.daily_pnl_pct) }}%)
+            </span>
+        </div>
+        <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
+            <span>Real: {{ "+" if bs.realized_pnl >= 0 else "" }}A${{ "%.2f" | format(bs.realized_pnl) }}</span>
+            &nbsp;|&nbsp;
+            <span class="{{ 'text-success' if bs.unrealized_pnl >= 0 else 'text-danger' }}">
+                Open: {{ "+" if bs.unrealized_pnl >= 0 else "" }}A${{ "%.2f" | format(bs.unrealized_pnl) }}
+            </span>
+        </div>
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.06); margin:10px 0;">
+        <div style="display:flex; gap:16px;">
+            <div>
+                <div class="stat-label">Positions</div>
+                <div class="text-mono" style="font-size:16px;">{{ bs.open_positions }}</div>
+            </div>
+            <div>
+                <div class="stat-label">Trades</div>
+                <div class="text-mono" style="font-size:16px;">{{ bs.daily_trades }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Combined Totals -->
 <div class="stats-grid">
     <div class="stat-card">
-        <div class="stat-label">Total Equity</div>
+        <div class="stat-label">Combined Equity</div>
         <div class="stat-value neutral text-mono">A${{ "%.2f" | format(stats.total_equity) }}</div>
         <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
             <span>At Risk: A${{ "%.2f" | format(stats.in_trades) }}</span>
@@ -15,7 +66,7 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Daily P&L</div>
+        <div class="stat-label">Combined Daily P&L</div>
         <div class="stat-value {{ 'positive' if stats.daily_pnl >= 0 else 'negative' }}">
             {{ "+" if stats.daily_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.daily_pnl) }}
         </div>

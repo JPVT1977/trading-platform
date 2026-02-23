@@ -32,6 +32,7 @@ class OverviewViews:
         """GET /dashboard — full overview page."""
         broker = request.query.get("broker", "all")
         stats = await self._get_stats()
+        broker_stats = await self._get_all_broker_stats()
         signals = await self._pool.fetch(dq.GET_RECENT_SIGNALS, 10)
         cycles = await self._pool.fetch(dq.GET_RECENT_CYCLES, 5)
         return {
@@ -40,6 +41,7 @@ class OverviewViews:
             "mode": self._settings.trading_mode.value,
             "circuit_breaker": self._get_circuit_breaker_status(),
             "stats": stats,
+            "broker_stats": broker_stats,
             "signals": signals,
             "cycles": cycles,
             "broker_filter": broker,
@@ -50,6 +52,7 @@ class OverviewViews:
         """GET /api/overview — HTMX partial for live stats refresh."""
         broker = request.query.get("broker", "all")
         stats = await self._get_stats()
+        broker_stats = await self._get_all_broker_stats()
         signals = await self._pool.fetch(dq.GET_RECENT_SIGNALS, 10)
         cycles = await self._pool.fetch(dq.GET_RECENT_CYCLES, 5)
 
@@ -57,6 +60,7 @@ class OverviewViews:
             "mode": self._settings.trading_mode.value,
             "circuit_breaker": self._get_circuit_breaker_status(),
             "stats": stats,
+            "broker_stats": broker_stats,
             "signals": signals,
             "cycles": cycles,
             "broker_filter": broker,
@@ -66,17 +70,29 @@ class OverviewViews:
             "partials/overview_stats.html", request, context
         )
 
-    async def _get_stats(self) -> dict:
-        """Fetch overview statistics — all monetary values in AUD."""
-        row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
-        equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
+    async def _get_stats(self, broker_id: str | None = None) -> dict:
+        """Fetch overview statistics — all monetary values in AUD.
+
+        When *broker_id* is provided, stats are scoped to that broker.
+        When ``None``, returns the aggregated view across all brokers.
+        """
+        if broker_id:
+            row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS_BY_BROKER, broker_id)
+            equity_row = await self._pool.fetchrow(
+                dq.GET_LATEST_EQUITY_BY_BROKER, broker_id,
+            )
+        else:
+            row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
+            equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
         # Snapshot equity and realized P&L are already stored in AUD
         snapshot_equity = float(equity_row["total_equity"]) if equity_row else 10000.0
         realized_pnl = float(row["daily_pnl"]) if row else 0.0
 
         # Calculate unrealized P&L, risk, and notional — already in AUD
-        unrealized_pnl, in_trades, total_notional = await self._get_open_position_data()
+        unrealized_pnl, in_trades, total_notional = await self._get_open_position_data(
+            broker_id=broker_id,
+        )
 
         # Live equity = snapshot (realized only) + current unrealized
         live_equity = snapshot_equity + unrealized_pnl
@@ -99,10 +115,22 @@ class OverviewViews:
             "total_leverage": total_leverage,
         }
 
-    async def _get_open_position_data(self) -> tuple[float, float, float]:
+    async def _get_all_broker_stats(self) -> dict[str, dict]:
+        """Return ``{broker_id: stats}`` for every broker with snapshots."""
+        rows = await self._pool.fetch(dq.GET_DISTINCT_BROKERS)
+        broker_ids = [r["broker"] for r in rows]
+        result: dict[str, dict] = {}
+        for bid in broker_ids:
+            result[bid] = await self._get_stats(broker_id=bid)
+        return result
+
+    async def _get_open_position_data(
+        self, *, broker_id: str | None = None,
+    ) -> tuple[float, float, float]:
         """Fetch live prices and calculate unrealized P&L, risk, and notional.
 
         All values returned in AUD.
+        When *broker_id* is set, only positions for that broker are included.
         Returns (unrealized_pnl_aud, total_risk_aud, total_notional_aud).
         """
         if not self._router:
@@ -112,6 +140,12 @@ class OverviewViews:
             positions = await self._pool.fetch(dq.GET_OPEN_POSITIONS)
             if not positions:
                 return 0.0, 0.0, 0.0
+
+            # Filter by broker when requested
+            if broker_id:
+                positions = [p for p in positions if p["broker"] == broker_id]
+                if not positions:
+                    return 0.0, 0.0, 0.0
 
             # Fetch current prices (group by symbol to minimize API calls)
             symbols = set(p["symbol"] for p in positions)

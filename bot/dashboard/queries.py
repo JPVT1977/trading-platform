@@ -85,6 +85,35 @@ GET_LATEST_EQUITY = """
     LIMIT 1
 """
 
+GET_LATEST_EQUITY_BY_BROKER = """
+    SELECT total_equity, available_balance, daily_pnl
+    FROM portfolio_snapshots
+    WHERE broker = $1
+    ORDER BY time DESC
+    LIMIT 1
+"""
+
+GET_OVERVIEW_STATS_BY_BROKER = """
+    SELECT
+        (SELECT COUNT(*) FROM orders
+         WHERE state NOT IN ('closed', 'cancelled', 'rejected', 'error')
+           AND broker = $1) AS open_positions,
+        (SELECT COALESCE(SUM(pnl), 0) FROM orders
+         WHERE state = 'closed'
+           AND closed_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+           AND broker = $1) AS daily_pnl,
+        (SELECT COUNT(*) FROM orders
+         WHERE state = 'closed'
+           AND closed_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+           AND broker = $1) AS daily_trades
+"""
+
+GET_DISTINCT_BROKERS = """
+    SELECT DISTINCT broker FROM portfolio_snapshots
+    WHERE broker IS NOT NULL
+    ORDER BY broker
+"""
+
 # ---------------------------------------------------------------------------
 # Signals (paginated)
 # ---------------------------------------------------------------------------

@@ -38,8 +38,10 @@ class PublicStatsViews:
         """GET /public/stats — full standalone stats page."""
         self._validate_token(request)
         stats = await self._overview._get_stats()
+        broker_stats = await self._overview._get_all_broker_stats()
         return {
             "stats": stats,
+            "broker_stats": broker_stats,
             "token": request.query["token"],
         }
 
@@ -47,6 +49,8 @@ class PublicStatsViews:
         """GET /public/stats/partial — HTMX partial for auto-refresh."""
         self._validate_token(request)
         stats = await self._overview._get_stats()
+        broker_stats = await self._overview._get_all_broker_stats()
         return aiohttp_jinja2.render_template(
-            "partials/public_stats_cards.html", request, {"stats": stats},
+            "partials/public_stats_cards.html", request,
+            {"stats": stats, "broker_stats": broker_stats},
         )
