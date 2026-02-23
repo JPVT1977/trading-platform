@@ -79,10 +79,15 @@ GET_RECENT_CYCLES = """
 """
 
 GET_LATEST_EQUITY = """
-    SELECT total_equity, available_balance, daily_pnl
-    FROM portfolio_snapshots
-    ORDER BY time DESC
-    LIMIT 1
+    SELECT COALESCE(SUM(total_equity), 0) AS total_equity,
+           COALESCE(SUM(available_balance), 0) AS available_balance,
+           COALESCE(SUM(daily_pnl), 0) AS daily_pnl
+    FROM (
+        SELECT DISTINCT ON (broker) total_equity, available_balance, daily_pnl
+        FROM portfolio_snapshots
+        WHERE broker IS NOT NULL
+        ORDER BY broker, time DESC
+    ) latest
 """
 
 GET_LATEST_EQUITY_BY_BROKER = """
