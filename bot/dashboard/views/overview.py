@@ -89,9 +89,9 @@ class OverviewViews:
         snapshot_equity = float(equity_row["total_equity"]) if equity_row else 10000.0
         realized_pnl = float(row["daily_pnl"]) if row else 0.0
 
-        # Calculate unrealized P&L, risk, and notional — already in AUD
-        unrealized_pnl, in_trades, total_notional = await self._get_open_position_data(
-            broker_id=broker_id,
+        # Calculate unrealized P&L, risk, margin, and notional — already in AUD
+        unrealized_pnl, in_trades, total_margin, total_notional = (
+            await self._get_open_position_data(broker_id=broker_id)
         )
 
         # Live equity = snapshot (realized only) + current unrealized
@@ -110,9 +110,9 @@ class OverviewViews:
             "unrealized_pnl": unrealized_pnl,
             "open_positions": int(row["open_positions"]) if row else 0,
             "daily_trades": int(row["daily_trades"]) if row else 0,
-            "in_trades": total_notional,
+            "in_trades": total_margin,
             "at_risk": in_trades,
-            "available": live_equity - total_notional,
+            "available": live_equity - total_margin,
             "total_leverage": total_leverage,
         }
 
@@ -127,26 +127,26 @@ class OverviewViews:
 
     async def _get_open_position_data(
         self, *, broker_id: str | None = None,
-    ) -> tuple[float, float, float]:
-        """Fetch live prices and calculate unrealized P&L, risk, and notional.
+    ) -> tuple[float, float, float, float]:
+        """Fetch live prices and calculate unrealized P&L, risk, margin, and notional.
 
         All values returned in AUD.
         When *broker_id* is set, only positions for that broker are included.
-        Returns (unrealized_pnl_aud, total_risk_aud, total_notional_aud).
+        Returns (unrealized_pnl_aud, total_risk_aud, total_margin_aud, total_notional_aud).
         """
         if not self._router:
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
         try:
             positions = await self._pool.fetch(dq.GET_OPEN_POSITIONS)
             if not positions:
-                return 0.0, 0.0, 0.0
+                return 0.0, 0.0, 0.0, 0.0
 
             # Filter by broker when requested
             if broker_id:
                 positions = [p for p in positions if p["broker"] == broker_id]
                 if not positions:
-                    return 0.0, 0.0, 0.0
+                    return 0.0, 0.0, 0.0, 0.0
 
             # Fetch current prices (group by symbol to minimize API calls)
             symbols = set(p["symbol"] for p in positions)
@@ -159,9 +159,10 @@ class OverviewViews:
                 except Exception:
                     pass
 
-            # Calculate unrealized P&L, risk, and notional — all in AUD
+            # Calculate unrealized P&L, risk, margin, and notional — all in AUD
             total_unrealized = 0.0
             total_risk = 0.0
+            total_margin = 0.0
             total_notional = 0.0
             for p in positions:
                 entry = float(p["entry_price"])
@@ -172,13 +173,19 @@ class OverviewViews:
                     inst = get_instrument(p["symbol"])
                     aud_rate = _quote_to_aud_rate(inst.quote_currency)
                 except Exception:
+                    inst = None
                     aud_rate = _USD_TO_AUD
 
                 # Capital at risk = qty * distance to stop (in AUD)
                 total_risk += qty * abs(entry - sl) * aud_rate
 
                 # Notional value in AUD
-                total_notional += qty * entry * aud_rate
+                notional_aud = qty * entry * aud_rate
+                total_notional += notional_aud
+
+                # Margin used = notional / leverage (1x for spot, 20-30x for forex)
+                leverage = inst.max_leverage if inst else 1.0
+                total_margin += notional_aud / leverage if leverage > 0 else notional_aud
 
                 current_price = tickers.get(p["symbol"])
                 if current_price is None:
@@ -189,10 +196,10 @@ class OverviewViews:
                     raw_pnl = (entry - current_price) * qty
                 total_unrealized += raw_pnl * aud_rate
 
-            return total_unrealized, total_risk, total_notional
+            return total_unrealized, total_risk, total_margin, total_notional
         except Exception as e:
             logger.warning(f"Failed to calculate open position data: {e}")
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
     def _get_circuit_breaker_status(self) -> dict:
         """Get circuit breaker status from risk manager."""
