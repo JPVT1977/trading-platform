@@ -218,11 +218,25 @@ class RiskManager:
         # Cap at 10% of portfolio value as absolute maximum
         max_notional = portfolio.total_equity * 0.10
         max_quantity = max_notional / signal.entry_price if signal.entry_price > 0 else 0.0
+        capped = position_size > max_quantity
         position_size = min(position_size, max_quantity)
 
-        logger.debug(
+        # Safety: verify the actual risk matches the target — reject if undersized
+        # (skip check when the notional cap legitimately reduced the position)
+        actual_risk = position_size * risk_per_unit
+        if not capped and actual_risk < risk_amount * 0.5:
+            logger.error(
+                f"SIZING REJECTED: {signal.symbol} — actual risk ${actual_risk:.2f} "
+                f"is <50% of target ${risk_amount:.2f} "
+                f"(qty={position_size:.6f}, stop_dist={risk_per_unit:.2f}, "
+                f"equity={portfolio.total_equity:.2f})"
+            )
+            return 0.0
+
+        logger.info(
             f"Position size: {position_size:.6f} "
-            f"(risk=${risk_amount:.2f}, stop_dist={risk_per_unit:.2f})"
+            f"(risk=${actual_risk:.2f} / target=${risk_amount:.2f}, "
+            f"stop_dist={risk_per_unit:.2f}{', NOTIONAL CAPPED' if capped else ''})"
         )
 
         return position_size
@@ -269,10 +283,21 @@ class RiskManager:
         # Round to whole units (OANDA accepts fractional but whole is cleaner)
         units = int(units)
 
-        logger.debug(
+        # Safety: verify the actual risk matches the target — reject if undersized
+        actual_risk = units * stop_pips * pip_value_aud
+        if actual_risk < risk_amount * 0.5:
+            logger.error(
+                f"SIZING REJECTED: {signal.symbol} — actual risk A${actual_risk:.2f} "
+                f"is <50% of target A${risk_amount:.2f} "
+                f"(units={units}, stop={stop_pips:.1f} pips, "
+                f"pip_val_aud={pip_value_aud:.8f}, equity={portfolio.total_equity:.2f})"
+            )
+            return 0.0
+
+        logger.info(
             f"Forex position size: {units} units "
-            f"(risk=${risk_amount:.2f}, stop={stop_pips:.1f} pips, "
-            f"pip_val={instrument.pip_value_per_unit})"
+            f"(risk=A${actual_risk:.2f} / target=A${risk_amount:.2f}, "
+            f"stop={stop_pips:.1f} pips, pip_val_aud={pip_value_aud:.8f})"
         )
 
         return float(units)
