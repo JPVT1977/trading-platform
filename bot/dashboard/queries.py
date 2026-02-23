@@ -164,6 +164,7 @@ GET_OPEN_POSITIONS = """
     SELECT o.id, o.symbol, o.direction, o.entry_price, o.stop_loss,
            o.take_profit_1, o.take_profit_2, o.quantity, o.state,
            o.created_at, o.filled_price, o.broker,
+           o.original_stop_loss, o.sl_trail_stage,
            s.divergence_type, s.indicator, s.confidence, s.reasoning
     FROM orders o
     LEFT JOIN signals s ON o.signal_id = s.id

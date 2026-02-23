@@ -278,3 +278,17 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Could not migrate portfolio_snapshots PK: %', SQLERRM;
 END $$;
+
+-- ===================================================================
+-- Breakeven + Profit-Lock trailing stop columns (idempotent)
+-- ===================================================================
+
+DO $$ BEGIN
+    ALTER TABLE orders ADD COLUMN original_stop_loss DOUBLE PRECISION;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE orders ADD COLUMN sl_trail_stage INTEGER DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;

@@ -184,6 +184,19 @@
                     correct side of the entry price.
                 </p>
 
+                <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Trailing stop loss (breakeven + profit lock)</div>
+                <p class="text-muted" style="margin:0 0 12px;">
+                    Once a position moves in profit, the stop loss is automatically tightened in two stages:<br>
+                    <strong style="color:#e2e8f0;">Stage 1 &mdash; Breakeven (50%):</strong>
+                    When price reaches 50% of the way to TP1, the SL moves to the entry price &mdash; the trade can no longer lose money.<br>
+                    <strong style="color:#e2e8f0;">Stage 2 &mdash; Profit Lock (75%):</strong>
+                    When price reaches 75% of the way to TP1, the SL moves to lock in 25% of the move.<br>
+                    <span class="text-sm">Checked every 2 minutes. Shown as
+                    <span class="badge badge-info" style="font-size:9px;">BE</span> and
+                    <span class="badge badge-success" style="font-size:9px;">LOCK</span>
+                    badges on the positions page.</span>
+                </p>
+
                 <div style="font-weight:600; margin-bottom:4px; color:#93c5fd;">Maximum positions allowed</div>
                 <p class="text-muted" style="margin:0 0 12px;">
                     <strong style="color:#e2e8f0;">4 positions per broker</strong> (Binance: 4, OANDA: 4 = 8 total max).<br>

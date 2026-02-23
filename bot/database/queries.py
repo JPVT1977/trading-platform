@@ -53,9 +53,10 @@ INSERT_ORDER = """
     INSERT INTO orders (
         signal_id, exchange_order_id, symbol, direction,
         state, entry_price, stop_loss, take_profit_1,
-        take_profit_2, take_profit_3, quantity, broker, created_at
+        take_profit_2, take_profit_3, quantity, broker,
+        original_stop_loss, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $7, NOW())
     RETURNING id
 """
 
@@ -75,6 +76,12 @@ UPDATE_ORDER_CLOSE = """
     UPDATE orders
     SET state = 'closed', pnl = $2, fees = $3, filled_price = $4,
         closed_at = NOW(), updated_at = NOW()
+    WHERE id = $1
+"""
+
+UPDATE_ORDER_STOP_LOSS = """
+    UPDATE orders
+    SET stop_loss = $2, sl_trail_stage = $3, updated_at = NOW()
     WHERE id = $1
 """
 

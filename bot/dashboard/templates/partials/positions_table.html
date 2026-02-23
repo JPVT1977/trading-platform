@@ -65,7 +65,14 @@
                         </div>
                         {% else %}-{% endif %}
                     </td>
-                    <td class="mono">{{ "%.2f" | format(p.stop_loss) }}</td>
+                    <td class="mono">
+                        {{ "%.2f" | format(p.stop_loss) }}
+                        {% if p.sl_trail_stage is defined and p.sl_trail_stage and p.sl_trail_stage >= 2 %}
+                        <span class="badge badge-success" style="font-size:9px; margin-left:2px;" title="Profit locked at 25% of move">LOCK</span>
+                        {% elif p.sl_trail_stage is defined and p.sl_trail_stage and p.sl_trail_stage >= 1 %}
+                        <span class="badge badge-info" style="font-size:9px; margin-left:2px;" title="Stop loss moved to breakeven">BE</span>
+                        {% endif %}
+                    </td>
                     <td class="mono">{{ "%.2f" | format(p.take_profit_1) }}</td>
                     <td class="mono">A${{ "%.2f" | format(p.risk_aud) if p.risk_aud is defined else "—" }}</td>
                     <td class="mono">{{ "%.1f" | format(p.leverage) }}x</td>
@@ -81,6 +88,13 @@
                         <strong>Qty:</strong> {{ "%.6f" | format(p.quantity) }}
                         &nbsp;|&nbsp; <strong>Trigger:</strong> {{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}
                         &nbsp;|&nbsp; <strong>Confidence:</strong> {{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%
+                        {% if p.original_stop_loss is defined and p.original_stop_loss and p.sl_trail_stage is defined and p.sl_trail_stage and p.sl_trail_stage > 0 %}
+                        <br><strong>Original SL:</strong> {{ "%.2f" | format(p.original_stop_loss) }}
+                        &nbsp;|&nbsp; <strong>Trail Stage:</strong>
+                        {% if p.sl_trail_stage >= 2 %}Profit Lock (25%)
+                        {% elif p.sl_trail_stage >= 1 %}Breakeven
+                        {% endif %}
+                        {% endif %}
                         <br><strong>Signal Reasoning:</strong> {{ p.reasoning or 'N/A' }}
                         {% if p.take_profit_2 %}<br><strong>TP2:</strong> {{ "%.2f" | format(p.take_profit_2) }}{% endif %}
                     </td>

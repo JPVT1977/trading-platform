@@ -228,6 +228,46 @@ class ExecutionEngine:
                 )
                 state = "filled"
 
+            # Step 1b: Breakeven / profit-lock trailing stop
+            original_sl = row["original_stop_loss"]
+            sl_trail_stage = row["sl_trail_stage"] or 0
+
+            if (
+                state == "filled"
+                and original_sl is not None
+                and sl_trail_stage < 2
+            ):
+                total_range = abs(take_profit_1 - entry_price)
+                if total_range > 0:
+                    if direction == "long":
+                        progress = (current_price - entry_price) / total_range
+                    else:
+                        progress = (entry_price - current_price) / total_range
+
+                    if progress >= 0.75 and sl_trail_stage < 2:
+                        if direction == "long":
+                            new_sl = entry_price + 0.25 * total_range
+                        else:
+                            new_sl = entry_price - 0.25 * total_range
+                        await pool.execute(
+                            queries.UPDATE_ORDER_STOP_LOSS,
+                            order_id, new_sl, 2,
+                        )
+                        stop_loss = new_sl
+                        logger.info(
+                            f"PROFIT LOCK: {symbol} SL moved to {new_sl:.5f}"
+                        )
+                    elif progress >= 0.50 and sl_trail_stage < 1:
+                        new_sl = entry_price
+                        await pool.execute(
+                            queries.UPDATE_ORDER_STOP_LOSS,
+                            order_id, new_sl, 1,
+                        )
+                        stop_loss = new_sl
+                        logger.info(
+                            f"BREAKEVEN: {symbol} SL moved to {new_sl:.5f}"
+                        )
+
             # Step 2: Check SL/TP against current price
             hit_sl = False
             hit_tp = False
