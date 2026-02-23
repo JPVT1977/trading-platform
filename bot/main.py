@@ -285,19 +285,32 @@ async def analysis_cycle(
         portfolio = await risk.get_portfolio_state(broker_id=bid)
         portfolio_cache[bid] = portfolio
 
-        # Record portfolio snapshot for equity curve
+        # Record portfolio snapshot for equity curve (all values in AUD)
         try:
             from bot.database import queries as q
+            from bot.layer4_risk.manager import _USD_TO_AUD
             open_count = await db.pool.fetchval(q.COUNT_OPEN_ORDERS_BY_BROKER, bid)
             pnl_row = await db.pool.fetchrow(q.SELECT_DAILY_PNL_BY_BROKER, bid)
             daily_pnl = float(pnl_row["daily_pnl"]) if pnl_row else 0.0
             daily_trades = int(pnl_row["daily_trades"]) if pnl_row else 0
+
+            # Convert to AUD for brokers with non-AUD base currency
+            if bid == "binance":
+                equity_aud = portfolio.total_equity * _USD_TO_AUD
+                balance_aud = portfolio.available_balance * _USD_TO_AUD
+                daily_pnl_aud = daily_pnl * _USD_TO_AUD
+            else:
+                # OANDA and IG accounts are AUD-denominated
+                equity_aud = portfolio.total_equity
+                balance_aud = portfolio.available_balance
+                daily_pnl_aud = daily_pnl
+
             await db.pool.execute(
                 q.INSERT_PORTFOLIO_SNAPSHOT,
-                portfolio.total_equity,
-                portfolio.available_balance,
+                equity_aud,
+                balance_aud,
                 open_count,
-                daily_pnl,
+                daily_pnl_aud,
                 daily_trades,
                 bid,
             )

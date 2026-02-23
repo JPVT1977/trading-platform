@@ -71,10 +71,9 @@ class OverviewViews:
         row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
-        # Snapshot equity and realized P&L are stored in USD — convert to AUD
-        snapshot_equity_usd = float(equity_row["total_equity"]) if equity_row else 10000.0
-        snapshot_equity = snapshot_equity_usd * _USD_TO_AUD
-        realized_pnl = (float(row["daily_pnl"]) if row else 0.0) * _USD_TO_AUD
+        # Snapshot equity and realized P&L are already stored in AUD
+        snapshot_equity = float(equity_row["total_equity"]) if equity_row else 10000.0
+        realized_pnl = float(row["daily_pnl"]) if row else 0.0
 
         # Calculate unrealized P&L, risk, and notional — already in AUD
         unrealized_pnl, in_trades, total_notional = await self._get_open_position_data()

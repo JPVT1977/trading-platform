@@ -33,13 +33,9 @@ class PositionsViews:
         if not positions or not self._router:
             return [dict(p) for p in positions]
 
-        # Fetch equity for leverage calculation (stored in USD)
+        # Fetch equity for leverage calculation (already stored in AUD)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
-        equity_aud = (
-            float(equity_row["total_equity"]) * _USD_TO_AUD
-            if equity_row
-            else 10000.0 * _USD_TO_AUD
-        )
+        equity_aud = float(equity_row["total_equity"]) if equity_row else 10000.0
 
         # Fetch current prices via broker router
         symbols = set(p["symbol"] for p in positions)
