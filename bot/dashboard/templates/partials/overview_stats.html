@@ -2,26 +2,31 @@
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-label">Total Equity</div>
-        <div class="stat-value neutral text-mono">${{ "%.2f" | format(stats.total_equity) }}</div>
+        <div class="stat-value neutral text-mono">A${{ "%.2f" | format(stats.total_equity) }}</div>
         <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
-            <span>At Risk: ${{ "%.2f" | format(stats.in_trades) }}</span>
+            <span>At Risk: A${{ "%.2f" | format(stats.in_trades) }}</span>
             &nbsp;|&nbsp;
-            <span>Available: ${{ "%.2f" | format(stats.available) }}</span>
+            <span>Available: A${{ "%.2f" | format(stats.available) }}</span>
+        </div>
+        <div class="stat-breakdown text-sm" style="margin-top:4px;">
+            <span class="{{ 'text-danger' if stats.total_leverage > 10 else 'text-warning' if stats.total_leverage > 5 else 'text-muted' }}">
+                Leverage: {{ "%.1f" | format(stats.total_leverage) }}x
+            </span>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Daily P&L</div>
         <div class="stat-value {{ 'positive' if stats.daily_pnl >= 0 else 'negative' }}">
-            {{ "+" if stats.daily_pnl >= 0 else "" }}${{ "%.2f" | format(stats.daily_pnl) }}
+            {{ "+" if stats.daily_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.daily_pnl) }}
         </div>
         <div class="stat-change {{ 'text-success' if stats.daily_pnl_pct >= 0 else 'text-danger' }}">
             {{ "+" if stats.daily_pnl_pct >= 0 else "" }}{{ "%.2f" | format(stats.daily_pnl_pct) }}%
         </div>
         <div class="stat-breakdown text-sm text-muted" style="margin-top:4px;">
-            <span>Realized: {{ "+" if stats.realized_pnl >= 0 else "" }}${{ "%.2f" | format(stats.realized_pnl) }}</span>
+            <span>Realized: {{ "+" if stats.realized_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.realized_pnl) }}</span>
             &nbsp;|&nbsp;
             <span class="{{ 'text-success' if stats.unrealized_pnl >= 0 else 'text-danger' }}">
-                Open: {{ "+" if stats.unrealized_pnl >= 0 else "" }}${{ "%.2f" | format(stats.unrealized_pnl) }}
+                Open: {{ "+" if stats.unrealized_pnl >= 0 else "" }}A${{ "%.2f" | format(stats.unrealized_pnl) }}
             </span>
         </div>
     </div>

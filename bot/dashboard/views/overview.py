@@ -10,7 +10,7 @@ from loguru import logger
 
 from bot.dashboard import queries as dq
 from bot.instruments import get_instrument
-from bot.layer4_risk.manager import _QUOTE_TO_USD
+from bot.layer4_risk.manager import _USD_TO_AUD, _quote_to_aud_rate
 
 if TYPE_CHECKING:
     from bot.layer1_data.broker_router import BrokerRouter
@@ -67,21 +67,25 @@ class OverviewViews:
         )
 
     async def _get_stats(self) -> dict:
-        """Fetch overview statistics including live unrealized P&L."""
+        """Fetch overview statistics — all monetary values in AUD."""
         row = await self._pool.fetchrow(dq.GET_OVERVIEW_STATS)
         equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
 
-        snapshot_equity = float(equity_row["total_equity"]) if equity_row else 10000.0
-        realized_pnl = float(row["daily_pnl"]) if row else 0.0
+        # Snapshot equity and realized P&L are stored in USD — convert to AUD
+        snapshot_equity_usd = float(equity_row["total_equity"]) if equity_row else 10000.0
+        snapshot_equity = snapshot_equity_usd * _USD_TO_AUD
+        realized_pnl = (float(row["daily_pnl"]) if row else 0.0) * _USD_TO_AUD
 
-        # Calculate unrealized P&L and total notional from open positions
-        unrealized_pnl, in_trades = await self._get_open_position_data()
+        # Calculate unrealized P&L, risk, and notional — already in AUD
+        unrealized_pnl, in_trades, total_notional = await self._get_open_position_data()
 
         # Live equity = snapshot (realized only) + current unrealized
         live_equity = snapshot_equity + unrealized_pnl
 
         total_pnl = realized_pnl + unrealized_pnl
         total_pnl_pct = (total_pnl / snapshot_equity * 100) if snapshot_equity > 0 else 0.0
+
+        total_leverage = total_notional / live_equity if live_equity > 0 else 0.0
 
         return {
             "total_equity": live_equity,
@@ -93,20 +97,22 @@ class OverviewViews:
             "daily_trades": int(row["daily_trades"]) if row else 0,
             "in_trades": in_trades,
             "available": live_equity - in_trades,
+            "total_leverage": total_leverage,
         }
 
-    async def _get_open_position_data(self) -> tuple[float, float]:
-        """Fetch live prices and calculate unrealized P&L and capital at risk.
+    async def _get_open_position_data(self) -> tuple[float, float, float]:
+        """Fetch live prices and calculate unrealized P&L, risk, and notional.
 
-        Returns (unrealized_pnl, total_risk_usd).
+        All values returned in AUD.
+        Returns (unrealized_pnl_aud, total_risk_aud, total_notional_aud).
         """
         if not self._router:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         try:
             positions = await self._pool.fetch(dq.GET_OPEN_POSITIONS)
             if not positions:
-                return 0.0, 0.0
+                return 0.0, 0.0, 0.0
 
             # Fetch current prices (group by symbol to minimize API calls)
             symbols = set(p["symbol"] for p in positions)
@@ -119,9 +125,10 @@ class OverviewViews:
                 except Exception:
                     pass
 
-            # Calculate unrealized P&L and capital at risk
+            # Calculate unrealized P&L, risk, and notional — all in AUD
             total_unrealized = 0.0
             total_risk = 0.0
+            total_notional = 0.0
             for p in positions:
                 entry = float(p["entry_price"])
                 qty = float(p["quantity"])
@@ -129,27 +136,29 @@ class OverviewViews:
 
                 try:
                     inst = get_instrument(p["symbol"])
-                    quote_rate = _QUOTE_TO_USD.get(
-                        inst.quote_currency, 1.0,
-                    )
+                    aud_rate = _quote_to_aud_rate(inst.quote_currency)
                 except Exception:
-                    quote_rate = 1.0
+                    aud_rate = _USD_TO_AUD
 
-                # Capital at risk = qty * distance to stop
-                total_risk += qty * abs(entry - sl) * quote_rate
+                # Capital at risk = qty * distance to stop (in AUD)
+                total_risk += qty * abs(entry - sl) * aud_rate
+
+                # Notional value in AUD
+                total_notional += qty * entry * aud_rate
 
                 current_price = tickers.get(p["symbol"])
                 if current_price is None:
                     continue
                 if p["direction"] == "long":
-                    total_unrealized += (current_price - entry) * qty
+                    raw_pnl = (current_price - entry) * qty
                 else:
-                    total_unrealized += (entry - current_price) * qty
+                    raw_pnl = (entry - current_price) * qty
+                total_unrealized += raw_pnl * aud_rate
 
-            return total_unrealized, total_risk
+            return total_unrealized, total_risk, total_notional
         except Exception as e:
             logger.warning(f"Failed to calculate open position data: {e}")
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
     def _get_circuit_breaker_status(self) -> dict:
         """Get circuit breaker status from risk manager."""

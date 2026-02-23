@@ -32,6 +32,24 @@ _QUOTE_TO_USD: dict[str, float] = {
     "JPY": 0.0067,  # 1/150
 }
 
+# Derived quote-currency-to-AUD rates for dashboard display.
+_QUOTE_TO_AUD: dict[str, float] = {
+    k: v / _QUOTE_TO_USD["AUD"] for k, v in _QUOTE_TO_USD.items()
+}
+
+_USD_TO_AUD: float = _QUOTE_TO_AUD["USD"]  # ~1.538
+
+
+def _quote_to_aud_rate(quote_currency: str) -> float:
+    """Return the conversion rate from *quote_currency* to AUD.
+
+    Treats USDT / BUSD / USDC as USD-equivalent.
+    """
+    if quote_currency in ("USDT", "BUSD", "USDC"):
+        return _USD_TO_AUD
+    return _QUOTE_TO_AUD.get(quote_currency, _USD_TO_AUD)
+
+
 # Per-asset-class correlation limits — how many same-direction positions allowed
 _ASSET_CLASS_CORRELATION_LIMITS: dict[AssetClass, int] = {
     AssetClass.FOREX: 4,

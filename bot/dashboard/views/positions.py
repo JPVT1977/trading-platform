@@ -12,7 +12,7 @@ from loguru import logger
 
 from bot.dashboard import queries as dq
 from bot.instruments import get_instrument
-from bot.layer4_risk.manager import _QUOTE_TO_USD
+from bot.layer4_risk.manager import _USD_TO_AUD, _quote_to_aud_rate
 
 if TYPE_CHECKING:
     from bot.layer1_data.broker_router import BrokerRouter
@@ -29,9 +29,17 @@ class PositionsViews:
         self._router = router
 
     async def _enrich_open_positions(self, positions):
-        """Add current_price and unrealized_pnl to open position rows."""
+        """Add current_price, unrealized_pnl (AUD), risk_aud, and leverage."""
         if not positions or not self._router:
             return [dict(p) for p in positions]
+
+        # Fetch equity for leverage calculation (stored in USD)
+        equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
+        equity_aud = (
+            float(equity_row["total_equity"]) * _USD_TO_AUD
+            if equity_row
+            else 10000.0 * _USD_TO_AUD
+        )
 
         # Fetch current prices via broker router
         symbols = set(p["symbol"] for p in positions)
@@ -47,16 +55,25 @@ class PositionsViews:
         enriched = []
         for p in positions:
             row = dict(p)
+            entry = float(p["entry_price"])
+            qty = float(p["quantity"])
+            sl = float(p["stop_loss"])
+
+            # Quote-to-AUD rate for this position
+            try:
+                inst = get_instrument(p["symbol"])
+                aud_rate = _quote_to_aud_rate(inst.quote_currency)
+            except Exception:
+                aud_rate = _USD_TO_AUD
+
             current_price = tickers.get(p["symbol"])
             if current_price is not None:
-                entry = float(p["entry_price"])
-                qty = float(p["quantity"])
                 if p["direction"] == "long":
-                    pnl = (current_price - entry) * qty
+                    raw_pnl = (current_price - entry) * qty
                 else:
-                    pnl = (entry - current_price) * qty
+                    raw_pnl = (entry - current_price) * qty
                 row["current_price"] = current_price
-                row["unrealized_pnl"] = pnl
+                row["unrealized_pnl"] = raw_pnl * aud_rate
                 if entry > 0:
                     if p["direction"] == "long":
                         row["pnl_pct"] = (current_price - entry) / entry * 100
@@ -69,18 +86,14 @@ class PositionsViews:
                 row["unrealized_pnl"] = None
                 row["pnl_pct"] = None
 
-            # Calculate capital at risk in USD (qty * stop distance)
-            entry = float(p["entry_price"])
-            qty = float(p["quantity"])
-            sl = float(p["stop_loss"])
-            try:
-                inst = get_instrument(p["symbol"])
-                quote_rate = _QUOTE_TO_USD.get(
-                    inst.quote_currency, 1.0,
-                )
-            except Exception:
-                quote_rate = 1.0
-            row["risk_usd"] = qty * abs(entry - sl) * quote_rate
+            # Capital at risk in AUD
+            row["risk_aud"] = qty * abs(entry - sl) * aud_rate
+
+            # Notional value and leverage
+            notional_aud = qty * entry * aud_rate
+            row["notional_aud"] = notional_aud
+            row["leverage"] = notional_aud / equity_aud if equity_aud > 0 else 0.0
+
             enriched.append(row)
         return enriched
 
