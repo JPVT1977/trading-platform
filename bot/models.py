@@ -73,6 +73,8 @@ class IndicatorSet(BaseModel):
     highs: list[float]
     lows: list[float]
     volumes: list[float]
+    volume_sma: list[float | None] = Field(default_factory=list)
+    candle_patterns: dict[str, list[int]] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +96,16 @@ class DivergenceSignal(BaseModel):
     reasoning: str = ""
     symbol: str = ""
     timeframe: str = ""
+    confirming_indicators: list[str] = Field(default_factory=list)
+    swing_length_bars: int | None = None
+    divergence_magnitude: float | None = None
+
+
+class ScoredSignal(BaseModel):
+    """A divergence signal with a deterministic quality score."""
+    signal: DivergenceSignal
+    score: float = Field(ge=0.0, le=10.0)
+    breakdown: dict[str, float] = Field(default_factory=dict)
 
 
 class ValidationResult(BaseModel):

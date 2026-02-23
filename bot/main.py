@@ -38,6 +38,7 @@ from bot.layer1_data.indicators import compute_indicators
 from bot.layer1_data.market_data import MarketDataClient
 from bot.layer1_data.payload_builder import build_analysis_payload
 from bot.layer2_intelligence.claude_client import ClaudeClient
+from bot.layer2_intelligence.scoring import compute_score
 from bot.layer2_intelligence.validator import validate_signal
 from bot.layer3_execution.engine import ExecutionEngine
 from bot.layer4_risk.manager import RiskManager
@@ -143,6 +144,11 @@ def _build_confirmed_signal(
         tp2 = entry - (risk * settings.min_risk_reward * 1.5)
         tp3 = entry - (risk * settings.min_risk_reward * 2.0)
 
+    # Merge confirming indicators from both timeframes (union)
+    merged_indicators = list(set(
+        setup.signal.confirming_indicators + signal_1h.confirming_indicators
+    ))
+
     return DivergenceSignal(
         divergence_detected=True,
         divergence_type=setup.signal.divergence_type,
@@ -162,6 +168,9 @@ def _build_confirmed_signal(
         ),
         symbol=signal_1h.symbol,
         timeframe="4h+1h",
+        confirming_indicators=merged_indicators,
+        swing_length_bars=setup.signal.swing_length_bars,
+        divergence_magnitude=setup.signal.divergence_magnitude,
     )
 
 
@@ -212,6 +221,8 @@ async def _persist_signal(
     validated: bool,
     validation_reason: str,
     broker_id: str = "binance",
+    divergence_score: float | None = None,
+    score_breakdown: dict | None = None,
 ) -> str | None:
     """Save a detected signal to the database immediately. Returns signal ID."""
     try:
@@ -234,6 +245,8 @@ async def _persist_signal(
             validated,
             validation_reason,
             broker_id,
+            divergence_score,
+            json.dumps(score_breakdown) if score_breakdown else None,
         )
         return str(row["id"]) if row else None
     except Exception as e:
@@ -397,11 +410,18 @@ async def analysis_cycle(
                         ),
                     )
 
+                # Compute divergence score (always, for DB storage)
+                scored = compute_score(signal, indicators, settings)
+                div_score = scored.score
+                div_breakdown = scored.breakdown
+
                 # Persist EVERY detected signal immediately (validated or not)
                 signal_id = await _persist_signal(
                     db, signal, validation.passed,
                     validation.reason or "All validation rules passed",
                     broker_id=broker_id,
+                    divergence_score=div_score,
+                    score_breakdown=div_breakdown,
                 )
 
                 if not validation.passed:
@@ -409,7 +429,21 @@ async def analysis_cycle(
                     result.symbol_details[candle_key] = f"signal_rejected ({validation.reason})"
                     continue
 
+                # Score gate: reject signals below minimum divergence score
+                if div_score < settings.min_divergence_score:
+                    logger.info(
+                        f"Signal score too low: {div_score:.1f} < "
+                        f"{settings.min_divergence_score} — {div_breakdown}"
+                    )
+                    result.symbol_details[candle_key] = (
+                        f"signal_rejected (score {div_score:.1f} < {settings.min_divergence_score})"
+                    )
+                    continue
+
                 result.signals_validated += 1
+                logger.info(
+                    f"Signal scored: {div_score:.1f}/10 — {div_breakdown}"
+                )
 
                 # ==========================================================
                 # Phase 2: Multi-TF Confirmation Logic

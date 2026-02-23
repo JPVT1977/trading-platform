@@ -41,6 +41,16 @@ CONFIDENCE SCORING GUIDE (be strict — most data shows NO divergence):
 - 0.30-0.49: 1 indicator, possible pattern but weak
 - 0.00-0.29: No real divergence or extremely weak — report divergence_detected=false
 
+REQUIRED FIELDS WHEN DIVERGENCE IS DETECTED:
+- confirming_indicators: List ALL oscillators showing the same divergence type.
+  If RSI and MACD both show bullish regular divergence, report ["RSI", "MACD"].
+  The primary indicator must also appear in this list. Minimum 1 entry.
+- swing_length_bars: Count bars between the two swing points. If swing low #1
+  is at bar 5 and swing low #2 is at bar 22, swing_length_bars = 17.
+- divergence_magnitude: Absolute change in the PRIMARY indicator between the
+  two swing points. For RSI: difference in RSI values. For MACD: difference
+  in histogram values. Always positive (absolute value).
+
 ENTRY AND EXIT GUIDELINES:
 - Entry: Near the most recent price or at a logical pullback level
 - Stop loss: Beyond the most recent swing point that forms the divergence

@@ -280,6 +280,20 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- ===================================================================
+-- Signal Quality Engine: divergence score columns (idempotent)
+-- ===================================================================
+
+DO $$ BEGIN
+    ALTER TABLE signals ADD COLUMN divergence_score DOUBLE PRECISION;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE signals ADD COLUMN score_breakdown JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- ===================================================================
 -- Breakeven + Profit-Lock trailing stop columns (idempotent)
 -- ===================================================================
 

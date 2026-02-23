@@ -130,6 +130,17 @@ class Settings(BaseSettings):
     ema_short: int = 20
     ema_medium: int = 50
     ema_long: int = 200
+
+    # --- Signal Quality Engine ---
+    min_divergence_score: float = 5.0
+    min_confirming_indicators: int = 2
+    min_swing_bars_4h: int = 15
+    min_swing_bars_1h: int = 10
+    min_divergence_magnitude_rsi: float = 5.0
+    volume_sma_period: int = 20
+    candle_gate_lookback: int = 3
+    volume_low_threshold: float = 0.5
+
     lookback_candles: int = 200
     payload_lookback: int = 30
 

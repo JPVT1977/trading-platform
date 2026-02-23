@@ -83,6 +83,34 @@ DIVERGENCE_ANALYSIS_TOOL = {
                     "and any notable context (trend, volume, key levels)."
                 ),
             },
+            "confirming_indicators": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["RSI", "MACD", "OBV", "MFI", "Stochastic", "CCI", "Williams_R"],
+                },
+                "description": (
+                    "ALL oscillators showing the same divergence type. "
+                    "The primary indicator must also appear in this list. "
+                    "Only include when divergence_detected is true."
+                ),
+            },
+            "swing_length_bars": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "Number of bars between the two swing points forming the divergence. "
+                    "Only include when divergence_detected is true."
+                ),
+            },
+            "divergence_magnitude": {
+                "type": "number",
+                "description": (
+                    "Absolute change in the PRIMARY indicator value between the two "
+                    "swing points. Always positive (absolute value). "
+                    "Only include when divergence_detected is true."
+                ),
+            },
         },
         "required": ["divergence_detected", "confidence", "reasoning"],
     },

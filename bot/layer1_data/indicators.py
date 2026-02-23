@@ -22,6 +22,7 @@ def compute_indicators(
 
     All indicators are computed server-side. Claude never computes numbers.
     """
+    opens = np.array([c.open for c in candles], dtype=np.float64)
     closes = np.array([c.close for c in candles], dtype=np.float64)
     highs = np.array([c.high for c in candles], dtype=np.float64)
     lows = np.array([c.low for c in candles], dtype=np.float64)
@@ -71,6 +72,29 @@ def compute_indicators(
     ema_medium = talib.EMA(closes, timeperiod=settings.ema_medium)
     ema_long = talib.EMA(closes, timeperiod=settings.ema_long)
 
+    # Volume SMA
+    volume_sma = talib.SMA(volumes, timeperiod=settings.volume_sma_period)
+
+    # Candlestick patterns (100=bullish, -100=bearish, 0=none)
+    ohlc = (opens, highs, lows, closes)
+    candle_patterns = {
+        "hammer": talib.CDLHAMMER(*ohlc).astype(int).tolist(),
+        "engulfing": talib.CDLENGULFING(*ohlc).astype(int).tolist(),
+        "morning_star": talib.CDLMORNINGSTAR(
+            *ohlc, penetration=0.3,
+        ).astype(int).tolist(),
+        "piercing": talib.CDLPIERCING(*ohlc).astype(int).tolist(),
+        "inverted_hammer": talib.CDLINVERTEDHAMMER(*ohlc).astype(int).tolist(),
+        "shooting_star": talib.CDLSHOOTINGSTAR(*ohlc).astype(int).tolist(),
+        "evening_star": talib.CDLEVENINGSTAR(
+            *ohlc, penetration=0.3,
+        ).astype(int).tolist(),
+        "dark_cloud": talib.CDLDARKCLOUDCOVER(
+            *ohlc, penetration=0.5,
+        ).astype(int).tolist(),
+        "hanging_man": talib.CDLHANGINGMAN(*ohlc).astype(int).tolist(),
+    }
+
     return IndicatorSet(
         symbol=symbol,
         timeframe=timeframe,
@@ -94,4 +118,6 @@ def compute_indicators(
         highs=highs.tolist(),
         lows=lows.tolist(),
         volumes=volumes.tolist(),
+        volume_sma=_nan_to_none(volume_sma),
+        candle_patterns=candle_patterns,
     )

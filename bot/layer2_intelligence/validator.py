@@ -4,7 +4,7 @@ from loguru import logger
 
 from bot.config import Settings
 from bot.instruments import AssetClass, get_asset_class
-from bot.models import DivergenceSignal, IndicatorSet, ValidationResult
+from bot.models import DivergenceSignal, IndicatorSet, SignalDirection, ValidationResult
 
 
 def _last_valid(arr: list[float | None]) -> float | None:
@@ -144,6 +144,120 @@ def validate_signal(
                             f"— divergence unreliable"
                         ),
                     )
+
+    # Rule 9: Oscillator stack — require minimum confirming indicators
+    if signal.divergence_detected and signal.confirming_indicators:
+        if len(signal.confirming_indicators) < settings.min_confirming_indicators:
+            return ValidationResult(
+                passed=False,
+                reason=(
+                    f"Only {len(signal.confirming_indicators)} confirming indicator(s) "
+                    f"(minimum {settings.min_confirming_indicators})"
+                ),
+            )
+
+    # Rule 10: Swing length — reject too-short divergences
+    if signal.swing_length_bars is not None:
+        min_bars = (
+            settings.min_swing_bars_4h if signal.timeframe == "4h"
+            else settings.min_swing_bars_1h
+        )
+        if signal.swing_length_bars < min_bars:
+            return ValidationResult(
+                passed=False,
+                reason=(
+                    f"Swing length {signal.swing_length_bars} bars below "
+                    f"minimum {min_bars} for {signal.timeframe}"
+                ),
+            )
+
+    # Rule 11: Divergence magnitude — RSI must show meaningful change
+    if (
+        signal.divergence_magnitude is not None
+        and signal.indicator == "RSI"
+        and signal.divergence_magnitude < settings.min_divergence_magnitude_rsi
+    ):
+        return ValidationResult(
+            passed=False,
+            reason=(
+                f"RSI divergence magnitude {signal.divergence_magnitude:.1f} "
+                f"below minimum {settings.min_divergence_magnitude_rsi}"
+            ),
+        )
+
+    # Rule 12: Zero volume guard — reject if recent volume is zero/near-zero
+    if indicators.volumes and len(indicators.volumes) >= 3:
+        recent_vols = indicators.volumes[-3:]
+        if any(v == 0 for v in recent_vols):
+            return ValidationResult(
+                passed=False,
+                reason="Zero volume detected in last 3 bars",
+            )
+        vol_sma_last = _last_valid(indicators.volume_sma) if indicators.volume_sma else None
+        if vol_sma_last and vol_sma_last > 0:
+            max_recent = max(recent_vols)
+            if max_recent < vol_sma_last * 0.01:
+                return ValidationResult(
+                    passed=False,
+                    reason=(
+                        f"Near-zero volume: max recent {max_recent:.2f} "
+                        f"< 1% of volume SMA {vol_sma_last:.2f}"
+                    ),
+                )
+
+    # Rule 13: Low volume — reject if current volume < 50% of SMA
+    if indicators.volume_sma and indicators.volumes:
+        vol_sma_last = _last_valid(indicators.volume_sma)
+        if vol_sma_last and vol_sma_last > 0:
+            current_vol = indicators.volumes[-1]
+            if current_vol < vol_sma_last * settings.volume_low_threshold:
+                return ValidationResult(
+                    passed=False,
+                    reason=(
+                        f"Low volume: {current_vol:.2f} < "
+                        f"{settings.volume_low_threshold * 100:.0f}% of "
+                        f"SMA({settings.volume_sma_period}) {vol_sma_last:.2f}"
+                    ),
+                )
+
+    # Rule 14: Candle gate — require reversal candlestick pattern
+    if indicators.candle_patterns and signal.direction is not None:
+        lookback = settings.candle_gate_lookback
+        bullish_patterns = ["hammer", "inverted_hammer", "piercing", "morning_star"]
+        bearish_patterns = ["shooting_star", "hanging_man", "dark_cloud", "evening_star"]
+
+        found_pattern = False
+        if signal.direction == SignalDirection.LONG:
+            for name in bullish_patterns:
+                if name in indicators.candle_patterns:
+                    vals = indicators.candle_patterns[name][-lookback:]
+                    if any(v > 0 for v in vals):
+                        found_pattern = True
+                        break
+            # Also check bullish engulfing (+100)
+            if not found_pattern and "engulfing" in indicators.candle_patterns:
+                vals = indicators.candle_patterns["engulfing"][-lookback:]
+                if any(v > 0 for v in vals):
+                    found_pattern = True
+        elif signal.direction == SignalDirection.SHORT:
+            for name in bearish_patterns:
+                if name in indicators.candle_patterns:
+                    vals = indicators.candle_patterns[name][-lookback:]
+                    if any(v < 0 for v in vals):
+                        found_pattern = True
+                        break
+            # Also check bearish engulfing (-100)
+            if not found_pattern and "engulfing" in indicators.candle_patterns:
+                vals = indicators.candle_patterns["engulfing"][-lookback:]
+                if any(v < 0 for v in vals):
+                    found_pattern = True
+
+        if not found_pattern:
+            direction_label = "bullish" if signal.direction == SignalDirection.LONG else "bearish"
+            return ValidationResult(
+                passed=False,
+                reason=f"No {direction_label} reversal candlestick in last {lookback} bars",
+            )
 
     logger.debug(
         f"Signal validated: {signal.symbol}/{signal.timeframe} "

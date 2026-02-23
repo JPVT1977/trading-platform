@@ -63,7 +63,7 @@ GET_OVERVIEW_STATS = """
 GET_RECENT_SIGNALS = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, validated, validation_reason,
-           reasoning, broker, created_at
+           reasoning, broker, divergence_score, created_at
     FROM signals
     ORDER BY created_at DESC
     LIMIT $1
@@ -126,7 +126,7 @@ GET_DISTINCT_BROKERS = """
 GET_SIGNALS_ALL = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, take_profit_1, validated,
-           validation_reason, reasoning, broker, created_at
+           validation_reason, reasoning, broker, divergence_score, created_at
     FROM signals
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -135,7 +135,7 @@ GET_SIGNALS_ALL = """
 GET_SIGNALS_VALIDATED = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, take_profit_1, validated,
-           validation_reason, reasoning, broker, created_at
+           validation_reason, reasoning, broker, divergence_score, created_at
     FROM signals
     WHERE validated = TRUE
     ORDER BY created_at DESC
@@ -145,7 +145,7 @@ GET_SIGNALS_VALIDATED = """
 GET_SIGNALS_REJECTED = """
     SELECT id, symbol, timeframe, divergence_type, indicator, confidence,
            direction, entry_price, stop_loss, take_profit_1, validated,
-           validation_reason, reasoning, broker, created_at
+           validation_reason, reasoning, broker, divergence_score, created_at
     FROM signals
     WHERE validated = FALSE
     ORDER BY created_at DESC

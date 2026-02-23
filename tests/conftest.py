@@ -100,6 +100,8 @@ def sample_indicator_set() -> IndicatorSet:
         highs=[float(42200 + rng.normal(0, 200)) for _ in range(n)],
         lows=[float(41800 + rng.normal(0, 200)) for _ in range(n)],
         volumes=[float(rng.uniform(100, 2000)) for _ in range(n)],
+        volume_sma=[float(rng.uniform(500, 1500)) for _ in range(n)],
+        candle_patterns={},
     )
 
 
@@ -120,6 +122,9 @@ def bullish_signal() -> DivergenceSignal:
         reasoning="RSI showing higher lows while price makes lower lows on 4h timeframe",
         symbol="BTC/USDT",
         timeframe="4h",
+        confirming_indicators=["RSI", "MACD"],
+        swing_length_bars=18,
+        divergence_magnitude=8.5,
     )
 
 
@@ -140,6 +145,9 @@ def bearish_signal() -> DivergenceSignal:
         reasoning="MACD histogram showing lower highs while price makes higher highs",
         symbol="BTC/USDT",
         timeframe="4h",
+        confirming_indicators=["RSI", "MACD"],
+        swing_length_bars=18,
+        divergence_magnitude=8.5,
     )
 
 

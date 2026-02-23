@@ -58,4 +58,8 @@ def build_analysis_payload(
             },
         },
         "volume": _trim(indicators.volumes, n),
+        "volume_sma": _trim(indicators.volume_sma, n) if indicators.volume_sma else [],
+        "candle_patterns": {
+            name: pattern[-n:] for name, pattern in indicators.candle_patterns.items()
+        } if indicators.candle_patterns else {},
     }

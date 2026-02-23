@@ -32,9 +32,10 @@ INSERT_SIGNAL = """
         symbol, timeframe, divergence_type, indicator,
         confidence, direction, entry_price, stop_loss,
         take_profit_1, take_profit_2, take_profit_3,
-        reasoning, raw_payload, validated, validation_reason, broker, created_at
+        reasoning, raw_payload, validated, validation_reason, broker,
+        divergence_score, score_breakdown, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
     RETURNING id
 """
 
