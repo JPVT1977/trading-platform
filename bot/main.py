@@ -25,12 +25,12 @@ import signal as signal_module
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
-from bot.config import Settings, TradingMode
+from bot.config import Settings
 from bot.database.connection import Database
 from bot.instruments import route_symbol
 from bot.layer1_data.broker_router import BrokerRouter
@@ -170,7 +170,9 @@ def _build_confirmed_signal(
 # ---------------------------------------------------------------------------
 
 
-async def _seed_candle_cache(router: BrokerRouter, all_symbols: list[str], settings: Settings) -> None:
+async def _seed_candle_cache(
+    router: BrokerRouter, all_symbols: list[str], settings: Settings,
+) -> None:
     """Populate _last_candle_times from exchanges so first cycle knows candle status.
 
     Without this, every restart treats the first candle as "closed" (new timestamp)
@@ -258,11 +260,11 @@ async def analysis_cycle(
     """
 
     result = AnalysisCycleResult(
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         symbols_analyzed=[],
     )
     cycle_start = time.monotonic()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Phase 2: Expire old setups at the start of each cycle
     if settings.use_multi_tf_confirmation:
@@ -271,7 +273,10 @@ async def analysis_cycle(
             logger.info(f"Multi-TF: expired {expired} setup(s)")
         active_count = sum(len(v) for v in _active_setups.values())
         if active_count:
-            logger.info(f"Multi-TF: {active_count} active setup(s) across {len(_active_setups)} symbol(s)")
+            logger.info(
+                f"Multi-TF: {active_count} active setup(s) "
+                f"across {len(_active_setups)} symbol(s)"
+            )
 
     # Get per-broker portfolio states and record snapshots
     portfolio_cache: dict[str, object] = {}
@@ -321,7 +326,9 @@ async def analysis_cycle(
                         f"{len(candles)} (need {settings.lookback_candles // 2}+)"
                     )
                     result.symbols_analyzed.append(candle_key)
-                    result.symbol_details[candle_key] = f"insufficient_data ({len(candles)} candles)"
+                    result.symbol_details[candle_key] = (
+                        f"insufficient_data ({len(candles)} candles)"
+                    )
                     continue
 
                 indicators = compute_indicators(candles, symbol, timeframe, settings)
@@ -371,7 +378,10 @@ async def analysis_cycle(
                 if validation.passed and signal.confidence < min_confidence:
                     validation = type(validation)(
                         passed=False,
-                        reason=f"Confidence {signal.confidence:.2f} below {broker_id} threshold {min_confidence}",
+                        reason=(
+                            f"Confidence {signal.confidence:.2f} below "
+                            f"{broker_id} threshold {min_confidence}"
+                        ),
                     )
 
                 # Persist EVERY detected signal immediately (validated or not)
@@ -474,8 +484,13 @@ async def analysis_cycle(
 
                 # Skip if we already traded this symbol this cycle
                 if symbol in traded_symbols:
-                    logger.info(f"Skipping {symbol}/{timeframe}: already traded {symbol} this cycle")
-                    result.symbol_details[candle_key] = "signal_validated (already traded this cycle)"
+                    logger.info(
+                        f"Skipping {symbol}/{timeframe}: "
+                        f"already traded {symbol} this cycle"
+                    )
+                    result.symbol_details[candle_key] = (
+                        "signal_validated (already traded this cycle)"
+                    )
                     continue
 
                 # --- Layer 3 + 4: Execution (includes risk checks) ---
@@ -500,7 +515,7 @@ async def analysis_cycle(
                 result.symbol_details[candle_key] = f"error ({e})"
 
     # Finalise cycle result
-    result.completed_at = datetime.now(timezone.utc)
+    result.completed_at = datetime.now(UTC)
     result.duration_ms = int((time.monotonic() - cycle_start) * 1000)
 
     logger.info(
@@ -624,7 +639,8 @@ async def main() -> None:
         f"<b>Bot Started</b>\n"
         f"Mode: {settings.trading_mode.value}\n"
         f"Brokers: {brokers_status}\n"
-        f"Symbols: {len(all_symbols)} ({', '.join(all_symbols[:5])}{'...' if len(all_symbols) > 5 else ''})\n"
+        f"Symbols: {len(all_symbols)} "
+        f"({', '.join(all_symbols[:5])}{'...' if len(all_symbols) > 5 else ''})\n"
         f"Interval: {settings.analysis_interval_minutes}min\n"
         f"{multi_tf_status}"
     )
@@ -665,7 +681,10 @@ async def main() -> None:
         misfire_grace_time=60,
     )
     scheduler.start()
-    logger.info(f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, SL/TP monitor: every 2min, outcomes: every 5min)")
+    logger.info(
+        f"Scheduler started (analysis: every {settings.analysis_interval_minutes}min, "
+        f"SL/TP monitor: every 2min, outcomes: every 5min)"
+    )
 
     # Seed candle dedup cache from exchanges so deploy doesn't re-trigger existing positions
     await _seed_candle_cache(router, all_symbols, settings)

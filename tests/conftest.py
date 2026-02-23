@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pytest
@@ -49,7 +48,7 @@ def settings() -> Settings:
 def sample_candles() -> list[Candle]:
     """200 candles of synthetic BTC/USDT data with realistic price action."""
     rng = np.random.default_rng(seed=42)
-    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
     candles = []
     price = 42000.0
 
@@ -81,7 +80,7 @@ def sample_indicator_set() -> IndicatorSet:
     return IndicatorSet(
         symbol="BTC/USDT",
         timeframe="4h",
-        timestamp=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 2, 1, tzinfo=UTC),
         rsi=[float(rng.uniform(20, 80)) for _ in range(n)],
         macd_line=[float(rng.normal(0, 50)) for _ in range(n)],
         macd_signal=[float(rng.normal(0, 40)) for _ in range(n)],

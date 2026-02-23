@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timezone
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2

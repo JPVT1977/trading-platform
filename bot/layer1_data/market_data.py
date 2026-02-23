@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import ccxt.async_support as ccxt
 from loguru import logger
@@ -55,7 +55,7 @@ class MarketDataClient(BrokerInterface):
 
         candles = [
             Candle(
-                timestamp=datetime.fromtimestamp(r[0] / 1000, tz=timezone.utc),
+                timestamp=datetime.fromtimestamp(r[0] / 1000, tz=UTC),
                 open=float(r[1]),
                 high=float(r[2]),
                 low=float(r[3]),

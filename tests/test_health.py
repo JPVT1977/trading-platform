@@ -1,9 +1,8 @@
 """Tests for the health check HTTP server."""
 
-import pytest
-from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
+
+import pytest
 
 from bot.config import Settings, TradingMode
 from bot.layer5_monitoring.health import HealthServer

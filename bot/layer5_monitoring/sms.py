@@ -104,7 +104,11 @@ class SMSClient:
 
     async def send_order_alert(self, order: TradeOrder) -> None:
         """Send a formatted order alert via SMS — different for open vs close."""
-        direction = order.direction.value.upper() if hasattr(order.direction, "value") else str(order.direction).upper()
+        direction = (
+            order.direction.value.upper()
+            if hasattr(order.direction, "value")
+            else str(order.direction).upper()
+        )
         state = order.state.value if hasattr(order.state, "value") else str(order.state)
 
         if state == "closed" and order.pnl is not None:

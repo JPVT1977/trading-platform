@@ -42,7 +42,10 @@ class TelegramClient:
 
     async def send_signal_alert(self, signal: DivergenceSignal) -> None:
         """Send a formatted signal detection alert."""
-        emoji = "\u2B06\uFE0F" if signal.direction and signal.direction.value == "long" else "\u2B07\uFE0F"
+        emoji = (
+            "\u2B06\uFE0F" if signal.direction and signal.direction.value == "long"
+            else "\u2B07\uFE0F"
+        )
         msg = (
             f"<b>{emoji} Signal Detected</b>\n\n"
             f"<b>Symbol:</b> {signal.symbol}\n"
@@ -62,7 +65,10 @@ class TelegramClient:
     async def send_order_alert(self, order: TradeOrder) -> None:
         """Send a formatted order alert — different for open vs close."""
         state = order.state.value if hasattr(order.state, "value") else str(order.state)
-        direction = order.direction.value if hasattr(order.direction, "value") else str(order.direction)
+        direction = (
+            order.direction.value if hasattr(order.direction, "value")
+            else str(order.direction)
+        )
 
         if state == "closed" and order.pnl is not None:
             pnl_prefix = "+" if order.pnl >= 0 else ""

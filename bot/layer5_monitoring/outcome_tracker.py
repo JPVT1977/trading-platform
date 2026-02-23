@@ -8,7 +8,7 @@ Runs every 5 minutes via APScheduler:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -27,7 +27,7 @@ INCORRECT_THRESHOLD = -0.5  # below -0.5% = incorrect
 def _ensure_utc(dt: datetime) -> datetime:
     """Ensure a datetime is timezone-aware UTC."""
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -72,7 +72,7 @@ async def _update_unresolved_outcomes(db: Database, router: BrokerRouter) -> int
         by_symbol.setdefault(row["symbol"], []).append(row)
 
     count = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for symbol, outcomes in by_symbol.items():
         # Fetch 1h candles covering the oldest signal to now

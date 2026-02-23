@@ -9,7 +9,6 @@ from bot.models import (
     DivergenceType,
     OrderState,
     PortfolioState,
-    RiskCheckResult,
     SignalDirection,
     TradeOrder,
 )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import aiohttp_jinja2
 import bcrypt
@@ -57,7 +57,7 @@ class AuthViews:
 
         # Create session
         session_id = secrets.token_hex(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        expires_at = datetime.now(UTC) + timedelta(hours=24)
         ip_address = request.remote or "unknown"
 
         await self._pool.execute(
@@ -97,7 +97,11 @@ class AuthViews:
         """GET /reset-password — render reset-password form."""
         reset_code = os.environ.get("DASHBOARD_RESET_CODE", "")
         if not reset_code:
-            return {"error": "Password reset is not configured. Set DASHBOARD_RESET_CODE in Fly secrets.", "disabled": True}
+            return {
+                "error": "Password reset is not configured. "
+                "Set DASHBOARD_RESET_CODE in Fly secrets.",
+                "disabled": True,
+            }
         return {"error": None, "success": None, "disabled": False}
 
     async def reset_password_post(self, request: web.Request) -> web.Response:

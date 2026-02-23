@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 from aiohttp import web
 
@@ -82,8 +81,6 @@ def setup_routes(
 
 def _make_heartbeat_handler(db_pool):
     """Create heartbeat endpoint — returns HTML snippet for sidebar."""
-    melb = ZoneInfo("Australia/Melbourne")
-
     async def heartbeat(request: web.Request) -> web.Response:
         row = await db_pool.fetchrow(dq.GET_LAST_CYCLE)
         if not row:
@@ -95,9 +92,9 @@ def _make_heartbeat_handler(db_pool):
 
         completed = row["completed_at"]
         if completed and completed.tzinfo is None:
-            completed = completed.replace(tzinfo=timezone.utc)
+            completed = completed.replace(tzinfo=UTC)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ago_seconds = int((now - completed).total_seconds()) if completed else 9999
         ago_minutes = ago_seconds // 60
 

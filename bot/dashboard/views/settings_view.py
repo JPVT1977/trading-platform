@@ -28,7 +28,10 @@ class SettingsViews:
                 "Exchange": {
                     "Exchange": s.exchange_id,
                     "Sandbox": str(s.exchange_sandbox),
-                    "API Key": "***" + s.exchange_api_key[-4:] if len(s.exchange_api_key) > 4 else "(not set)",
+                    "API Key": (
+                        "***" + s.exchange_api_key[-4:]
+                        if len(s.exchange_api_key) > 4 else "(not set)"
+                    ),
                 },
                 "Risk Management": {
                     "Max Position %": f"{s.max_position_pct}%",
@@ -41,7 +44,9 @@ class SettingsViews:
                 "Indicators": {
                     "RSI Period": str(s.rsi_period),
                     "MACD Fast/Slow/Signal": f"{s.macd_fast}/{s.macd_slow}/{s.macd_signal}",
-                    "Stochastic K/D/Slowing": f"{s.stoch_k_period}/{s.stoch_d_period}/{s.stoch_slowing}",
+                    "Stochastic K/D/Slowing": (
+                        f"{s.stoch_k_period}/{s.stoch_d_period}/{s.stoch_slowing}"
+                    ),
                     "MFI Period": str(s.mfi_period),
                     "ATR Period": str(s.atr_period),
                     "EMA Short/Medium/Long": f"{s.ema_short}/{s.ema_medium}/{s.ema_long}",
@@ -50,12 +55,18 @@ class SettingsViews:
                 "Claude AI": {
                     "Model": s.claude_model,
                     "Max Tokens": str(s.claude_max_tokens),
-                    "API Key": "***" + s.anthropic_api_key[-4:] if len(s.anthropic_api_key) > 4 else "(not set)",
+                    "API Key": (
+                        "***" + s.anthropic_api_key[-4:]
+                        if len(s.anthropic_api_key) > 4 else "(not set)"
+                    ),
                 },
                 "OANDA": {
                     "Enabled": str(s.oanda_enabled),
                     "Environment": "Practice" if s.oanda_sandbox else "Live",
-                    "API Token": "***" + s.oanda_api_token[-4:] if len(s.oanda_api_token) > 4 else "(not set)",
+                    "API Token": (
+                        "***" + s.oanda_api_token[-4:]
+                        if len(s.oanda_api_token) > 4 else "(not set)"
+                    ),
                     "Symbols": ", ".join(s.oanda_symbols) if s.oanda_symbols else "(none)",
                     "Max Positions": str(s.oanda_max_open_positions),
                     "Min Confidence": f"{s.oanda_min_confidence:.0%}",

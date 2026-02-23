@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from bot.models import OrderState
 
-
 # Valid state transitions — defines the order lifecycle FSM
 TRANSITIONS: dict[OrderState, set[OrderState]] = {
     OrderState.PENDING: {

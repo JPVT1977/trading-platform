@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta, timezone
+from datetime import UTC, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -47,7 +47,7 @@ class EquityViews:
         for row in rows:
             t = row["time"]
             if t.tzinfo is None:
-                t = t.replace(tzinfo=timezone.utc)
+                t = t.replace(tzinfo=UTC)
             labels.append(t.astimezone(MELB_TZ).strftime("%b %d %H:%M"))
             values.append(float(row["total_equity"]))
 

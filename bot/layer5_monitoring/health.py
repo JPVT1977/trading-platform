@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -10,6 +10,10 @@ import jinja2
 from aiohttp import web
 from loguru import logger
 
+from bot.dashboard.middleware import auth_middleware
+from bot.dashboard.routes import setup_routes
+from bot.dashboard.setup_users import seed_dashboard_users
+
 MELB_TZ = ZoneInfo("Australia/Melbourne")
 
 
@@ -18,12 +22,8 @@ def _to_melb(dt):
     if dt is None:
         return dt
     if hasattr(dt, "tzinfo") and dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(MELB_TZ)
-
-from bot.dashboard.middleware import auth_middleware
-from bot.dashboard.routes import setup_routes
-from bot.dashboard.setup_users import seed_dashboard_users
 
 if TYPE_CHECKING:
     from bot.config import Settings

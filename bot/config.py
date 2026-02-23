@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class TradingMode(str, Enum):
+class TradingMode(StrEnum):
     DEV = "dev"      # No exchange calls, mock everything
     PAPER = "paper"  # Real data, simulated orders (testnet)
     LIVE = "live"    # Real money

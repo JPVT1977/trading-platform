@@ -1,29 +1,27 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Optional
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
-class DivergenceType(str, Enum):
+class DivergenceType(StrEnum):
     BULLISH_REGULAR = "bullish_regular"
     BEARISH_REGULAR = "bearish_regular"
     BULLISH_HIDDEN = "bullish_hidden"
     BEARISH_HIDDEN = "bearish_hidden"
 
 
-class SignalDirection(str, Enum):
+class SignalDirection(StrEnum):
     LONG = "long"
     SHORT = "short"
 
 
-class OrderState(str, Enum):
+class OrderState(StrEnum):
     PENDING = "pending"
     SUBMITTED = "submitted"
     PARTIALLY_FILLED = "partially_filled"
@@ -56,20 +54,20 @@ class IndicatorSet(BaseModel):
     symbol: str
     timeframe: str
     timestamp: datetime
-    rsi: list[Optional[float]]
-    macd_line: list[Optional[float]]
-    macd_signal: list[Optional[float]]
-    macd_histogram: list[Optional[float]]
-    obv: list[Optional[float]]
-    mfi: list[Optional[float]]
-    stoch_k: list[Optional[float]]
-    stoch_d: list[Optional[float]]
-    cci: list[Optional[float]]
-    williams_r: list[Optional[float]]
-    atr: list[Optional[float]]
-    ema_short: list[Optional[float]]
-    ema_medium: list[Optional[float]]
-    ema_long: list[Optional[float]]
+    rsi: list[float | None]
+    macd_line: list[float | None]
+    macd_signal: list[float | None]
+    macd_histogram: list[float | None]
+    obv: list[float | None]
+    mfi: list[float | None]
+    stoch_k: list[float | None]
+    stoch_d: list[float | None]
+    cci: list[float | None]
+    williams_r: list[float | None]
+    atr: list[float | None]
+    ema_short: list[float | None]
+    ema_medium: list[float | None]
+    ema_long: list[float | None]
     closes: list[float]
     highs: list[float]
     lows: list[float]
@@ -83,15 +81,15 @@ class IndicatorSet(BaseModel):
 class DivergenceSignal(BaseModel):
     """Output from Claude tool_use — structured divergence detection."""
     divergence_detected: bool
-    divergence_type: Optional[DivergenceType] = None
-    indicator: Optional[str] = None
+    divergence_type: DivergenceType | None = None
+    indicator: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
-    direction: Optional[SignalDirection] = None
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit_1: Optional[float] = None
-    take_profit_2: Optional[float] = None
-    take_profit_3: Optional[float] = None
+    direction: SignalDirection | None = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit_1: float | None = None
+    take_profit_2: float | None = None
+    take_profit_3: float | None = None
     reasoning: str = ""
     symbol: str = ""
     timeframe: str = ""
@@ -109,25 +107,25 @@ class ValidationResult(BaseModel):
 
 class TradeOrder(BaseModel):
     """Represents an order through its full lifecycle."""
-    id: Optional[str] = None
-    signal_id: Optional[str] = None
-    exchange_order_id: Optional[str] = None
+    id: str | None = None
+    signal_id: str | None = None
+    exchange_order_id: str | None = None
     symbol: str
     direction: SignalDirection
     state: OrderState = OrderState.PENDING
     entry_price: float
     stop_loss: float
     take_profit_1: float
-    take_profit_2: Optional[float] = None
-    take_profit_3: Optional[float] = None
+    take_profit_2: float | None = None
+    take_profit_3: float | None = None
     quantity: float = 0.0
     filled_quantity: float = 0.0
-    filled_price: Optional[float] = None
-    pnl: Optional[float] = None
+    filled_price: float | None = None
+    pnl: float | None = None
     fees: float = 0.0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    closed_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    closed_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +154,12 @@ class PortfolioState(BaseModel):
 class AnalysisCycleResult(BaseModel):
     """Summary of one analysis cycle."""
     started_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     symbols_analyzed: list[str] = Field(default_factory=list)
     signals_found: int = 0
     signals_validated: int = 0
     orders_placed: int = 0
     errors: list[str] = Field(default_factory=list)
-    duration_ms: Optional[int] = None
+    duration_ms: int | None = None
     # Per-symbol detail: {"BTC/USDT:USDT/1h": "no_divergence", ...}
     symbol_details: dict[str, str] = Field(default_factory=dict)

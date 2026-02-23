@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 
 class OverviewViews:
 
-    def __init__(self, db_pool, settings, risk_manager=None, router: BrokerRouter | None = None) -> None:
+    def __init__(
+        self, db_pool, settings, risk_manager=None,
+        router: BrokerRouter | None = None,
+    ) -> None:
         self._pool = db_pool
         self._settings = settings
         self._risk_manager = risk_manager

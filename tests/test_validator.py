@@ -3,13 +3,14 @@
 Tests all 6 validation rules with edge cases and boundary values.
 """
 
+from datetime import UTC
+
 import pytest
 
 from bot.config import Settings, TradingMode
 from bot.layer2_intelligence.validator import validate_signal
 from bot.models import (
     DivergenceSignal,
-    DivergenceType,
     IndicatorSet,
     SignalDirection,
 )
@@ -267,13 +268,13 @@ def _make_indicators(
     atr_last: float = 350.0,
 ) -> IndicatorSet:
     """Create a minimal IndicatorSet with specific last values."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     n = 30
     return IndicatorSet(
         symbol="BTC/USDT",
         timeframe="4h",
-        timestamp=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 2, 1, tzinfo=UTC),
         rsi=[50.0] * (n - 1) + [rsi_last],
         macd_line=[0.0] * n,
         macd_signal=[0.0] * n,

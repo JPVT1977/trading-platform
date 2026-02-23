@@ -7,16 +7,16 @@ what pip/lot characteristics it has.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class BrokerType(str, Enum):
+class BrokerType(StrEnum):
     BINANCE = "binance"
     OANDA = "oanda"
     IG = "ig"
 
 
-class AssetClass(str, Enum):
+class AssetClass(StrEnum):
     CRYPTO = "crypto"
     FOREX = "forex"
     INDEX = "index"

@@ -16,7 +16,8 @@ ANALYSIS METHODOLOGY:
 - A valid swing HIGH needs at least 2 lower highs on EACH side (5-bar minimum)
 - A valid swing LOW needs at least 2 higher lows on EACH side (5-bar minimum)
 - The two swing points forming the divergence should be 5-20 bars apart
-- Check for divergence across ALL provided oscillators: RSI, MACD histogram, OBV, MFI, Stochastic, CCI, Williams %R
+- Check for divergence across ALL provided oscillators: RSI, MACD histogram,\
+ OBV, MFI, Stochastic, CCI, Williams %R
 - Count how many indicators show the SAME type of divergence (confluence)
 - Higher confluence = higher confidence
 - Use EMA data to determine the current TREND:
@@ -28,8 +29,10 @@ ANALYSIS METHODOLOGY:
 - Divergences AGAINST the EMA trend have lower reliability — reduce confidence
 
 INDICATOR NOTES:
-- CCI (Commodity Channel Index): Oscillates around 0. Values >100 = overbought, <-100 = oversold. Divergence logic same as RSI.
-- Williams %R: Range -100 to 0. Values near 0 = overbought, near -100 = oversold. Inverted scale — treat like inverse RSI for divergence detection.
+- CCI (Commodity Channel Index): Oscillates around 0. Values >100 = overbought,\
+ <-100 = oversold. Divergence logic same as RSI.
+- Williams %R: Range -100 to 0. Values near 0 = overbought, near -100 = oversold.\
+ Inverted scale — treat like inverse RSI for divergence detection.
 
 CONFIDENCE SCORING GUIDE (be strict — most data shows NO divergence):
 - 0.85-1.0: 5+ indicators confirming, textbook swing points, volume confirms, EMA trend supports
@@ -48,16 +51,28 @@ ENTRY AND EXIT GUIDELINES:
 
 FORMING vs CLOSED CANDLES:
 - The payload includes a "candle_status" field: "closed" or "forming".
-- "closed" means the most recent candle is complete — its OHLC values are final. This is the highest-confidence data.
-- "forming" means the most recent candle is STILL OPEN — its close, high, and low may change before the candle completes. The last data point in each array reflects the CURRENT price, not a confirmed close.
-- When candle_status is "forming": You CAN detect divergences, but be slightly more conservative. A divergence visible on a forming candle is preliminary — the candle close could invalidate it. Reduce confidence by ~0.05-0.10 for forming candles compared to what you'd assign on closed data.
+- "closed" means the most recent candle is complete — its OHLC values are final.\
+ This is the highest-confidence data.
+- "forming" means the most recent candle is STILL OPEN — its close, high, and low\
+ may change before the candle completes. The last data point in each array reflects\
+ the CURRENT price, not a confirmed close.
+- When candle_status is "forming": You CAN detect divergences, but be slightly more\
+ conservative. A divergence visible on a forming candle is preliminary — the candle\
+ close could invalidate it. Reduce confidence by ~0.05-0.10 for forming candles\
+ compared to what you'd assign on closed data.
 - When candle_status is "closed": Apply normal confidence scoring.
 
 CRITICAL RULES:
-- MOST data will show NO divergence. Expect to report divergence_detected=false the MAJORITY of the time.
-- A divergence requires TWO CLEAR swing points with the indicator moving OPPOSITE to price. If you cannot identify two specific, unambiguous swing points, there is NO divergence.
-- Do NOT report a divergence just because an oscillator and price are trending in slightly different directions. You need CLEAR swing highs/lows that form a definitive pattern.
-- If unsure, report divergence_detected=false. False negatives are MUCH better than false positives in trading.
+- MOST data will show NO divergence. Expect to report divergence_detected=false\
+ the MAJORITY of the time.
+- A divergence requires TWO CLEAR swing points with the indicator moving OPPOSITE\
+ to price. If you cannot identify two specific, unambiguous swing points,\
+ there is NO divergence.
+- Do NOT report a divergence just because an oscillator and price are trending in\
+ slightly different directions. You need CLEAR swing highs/lows that form a\
+ definitive pattern.
+- If unsure, report divergence_detected=false. False negatives are MUCH better\
+ than false positives in trading.
 - You are the analyst, not the trader. Report what you see, not what you hope.
 - All numerical values in the data are pre-computed and accurate. Trust them.
 - Focus on the RELATIONSHIP between price and indicators, not absolute values.

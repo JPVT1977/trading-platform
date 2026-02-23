@@ -123,7 +123,10 @@ class ExecutionEngine:
                 )
 
             elif self._settings.trading_mode == TradingMode.PAPER:
-                order.exchange_order_id = f"paper-{broker_id}-{signal.symbol}-{signal.timeframe}-{int(time_mod.time())}"
+                order.exchange_order_id = (
+                    f"paper-{broker_id}-{signal.symbol}"
+                    f"-{signal.timeframe}-{int(time_mod.time())}"
+                )
                 logger.info(
                     f"PAPER TRADE: {side} {order.quantity:.6f} {order.symbol} "
                     f"@ {order.entry_price} | SL: {order.stop_loss} | TP1: {order.take_profit_1}"

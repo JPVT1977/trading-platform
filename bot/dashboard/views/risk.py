@@ -24,7 +24,10 @@ class RiskViews:
         daily_pnl = float(stats_row["daily_pnl"]) if stats_row else 0.0
         open_count = int(stats_row["open_positions"]) if stats_row else 0
 
-        daily_loss_pct = abs(daily_pnl) / total_equity * 100 if daily_pnl < 0 and total_equity > 0 else 0.0
+        if daily_pnl < 0 and total_equity > 0:
+            daily_loss_pct = abs(daily_pnl) / total_equity * 100
+        else:
+            daily_loss_pct = 0.0
 
         # Circuit breaker (daily or drawdown)
         cb_active = False
@@ -50,17 +53,26 @@ class RiskViews:
                 "daily_loss": {
                     "current": daily_loss_pct,
                     "max": self._settings.max_daily_loss_pct,
-                    "pct": min(100, daily_loss_pct / self._settings.max_daily_loss_pct * 100) if self._settings.max_daily_loss_pct > 0 else 0,
+                    "pct": (
+                        min(100, daily_loss_pct / self._settings.max_daily_loss_pct * 100)
+                        if self._settings.max_daily_loss_pct > 0 else 0
+                    ),
                 },
                 "open_positions": {
                     "current": open_count,
                     "max": self._settings.max_open_positions,
-                    "pct": open_count / self._settings.max_open_positions * 100 if self._settings.max_open_positions > 0 else 0,
+                    "pct": (
+                        open_count / self._settings.max_open_positions * 100
+                        if self._settings.max_open_positions > 0 else 0
+                    ),
                 },
                 "correlation": {
                     "current": correlation_count,
                     "max": self._settings.max_correlation_exposure,
-                    "pct": correlation_count / self._settings.max_correlation_exposure * 100 if self._settings.max_correlation_exposure > 0 else 0,
+                    "pct": (
+                        correlation_count / self._settings.max_correlation_exposure * 100
+                        if self._settings.max_correlation_exposure > 0 else 0
+                    ),
                 },
             },
             "position_sizing": {

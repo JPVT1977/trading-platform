@@ -57,7 +57,13 @@ class PositionsViews:
                     pnl = (entry - current_price) * qty
                 row["current_price"] = current_price
                 row["unrealized_pnl"] = pnl
-                row["pnl_pct"] = ((current_price - entry) / entry * 100 if p["direction"] == "long" else (entry - current_price) / entry * 100) if entry > 0 else 0.0
+                if entry > 0:
+                    if p["direction"] == "long":
+                        row["pnl_pct"] = (current_price - entry) / entry * 100
+                    else:
+                        row["pnl_pct"] = (entry - current_price) / entry * 100
+                else:
+                    row["pnl_pct"] = 0.0
             else:
                 row["current_price"] = None
                 row["unrealized_pnl"] = None

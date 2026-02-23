@@ -1,6 +1,5 @@
 """Tests for the payload builder that prepares data for Claude."""
 
-from bot.config import Settings, TradingMode
 from bot.layer1_data.payload_builder import build_analysis_payload
 
 
