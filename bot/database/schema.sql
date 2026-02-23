@@ -262,3 +262,19 @@ CREATE INDEX IF NOT EXISTS idx_orders_broker_open
 
 CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_broker
     ON portfolio_snapshots (broker, time DESC);
+
+-- Fix: portfolio_snapshots PK must include broker for multi-broker support
+DO $$ BEGIN
+    -- Drop old PK on (time) and create composite PK on (time, broker)
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'portfolio_snapshots'::regclass
+          AND contype = 'p'
+          AND array_length(conkey, 1) = 1
+    ) THEN
+        ALTER TABLE portfolio_snapshots DROP CONSTRAINT portfolio_snapshots_pkey;
+        ALTER TABLE portfolio_snapshots ADD PRIMARY KEY (time, broker);
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not migrate portfolio_snapshots PK: %', SQLERRM;
+END $$;

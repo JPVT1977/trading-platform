@@ -9,7 +9,7 @@ from loguru import logger
 from bot.config import Settings, TradingMode
 from bot.database import queries
 from bot.database.connection import Database
-from bot.instruments import is_forex, route_symbol
+from bot.instruments import get_instrument, route_symbol
 from bot.layer3_execution.order_state import OrderStateMachine
 from bot.models import (
     DivergenceSignal,
@@ -248,11 +248,12 @@ class ExecutionEngine:
             else:
                 pnl = (entry_price - exit_price) * quantity
 
-            # Forex fees = 0 (spread-based), crypto fees = 0.1% round trip
-            if is_forex(symbol):
+            # Spread-based instruments (OANDA, IG) = 0 fees; crypto = fee_rate round trip
+            inst = get_instrument(symbol)
+            if inst.fee_rate == 0.0:
                 fees = 0.0
             else:
-                fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
+                fees = (entry_price * quantity + exit_price * quantity) * inst.fee_rate
 
             pnl_net = pnl - fees
             reason = "STOP LOSS" if hit_sl else "TAKE PROFIT"
@@ -320,10 +321,11 @@ class ExecutionEngine:
         else:
             pnl = (entry_price - exit_price) * quantity
 
-        if is_forex(symbol):
+        inst = get_instrument(symbol)
+        if inst.fee_rate == 0.0:
             fees = 0.0
         else:
-            fees = entry_price * quantity * 0.001 + exit_price * quantity * 0.001
+            fees = (entry_price * quantity + exit_price * quantity) * inst.fee_rate
         pnl_net = pnl - fees
 
         # Close the order

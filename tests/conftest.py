@@ -40,6 +40,8 @@ def settings() -> Settings:
         max_daily_loss_pct=5.0,
         max_open_positions=3,
         max_correlation_exposure=2,
+        binance_max_open_positions=3,
+        binance_max_correlation_exposure=2,
     )
 
 

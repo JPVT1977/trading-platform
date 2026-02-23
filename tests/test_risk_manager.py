@@ -84,8 +84,16 @@ class TestRiskChecks:
         assert result.approved is False
         assert "already" in result.reason.lower()
 
-    def test_rejects_correlation_limit(self, risk_manager):
-        # Two long positions already open
+    def test_rejects_correlation_limit(self):
+        # Use settings with high position limit so correlation check fires first
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+        )
+        rm = RiskManager(s)
+        # Four long crypto positions already open (crypto asset class limit = 4)
         orders = [
             TradeOrder(
                 symbol=f"PAIR{i}/USDT",
@@ -96,11 +104,11 @@ class TestRiskChecks:
                 take_profit_1=110,
                 quantity=1,
             )
-            for i in range(2)
+            for i in range(4)
         ]
         portfolio = PortfolioState(
             total_equity=10000.0,
-            available_balance=8000.0,
+            available_balance=6000.0,
             open_positions=orders,
         )
         signal = DivergenceSignal(
@@ -114,7 +122,7 @@ class TestRiskChecks:
             symbol="NEW/USDT",
             timeframe="4h",
         )
-        result = risk_manager.check_entry(signal, portfolio)
+        result = rm.check_entry(signal, portfolio)
         assert result.approved is False
         assert "Correlation" in result.reason
 

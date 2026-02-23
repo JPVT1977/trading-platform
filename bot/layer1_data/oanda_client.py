@@ -8,6 +8,7 @@ backoff via tenacity.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING
@@ -61,7 +62,6 @@ class OandaClient(BrokerInterface):
 
     async def _throttle(self) -> None:
         """Enforce minimum delay between consecutive OANDA requests."""
-        import time
         now = time.monotonic()
         elapsed = now - self._last_request_time
         if elapsed < self._REQUEST_DELAY_S:
@@ -70,7 +70,7 @@ class OandaClient(BrokerInterface):
 
     def _run_sync(self, func, *args, **kwargs):
         """Run a synchronous oandapyV20 call in the thread pool."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return loop.run_in_executor(None, partial(func, *args, **kwargs))
 
     @retry(

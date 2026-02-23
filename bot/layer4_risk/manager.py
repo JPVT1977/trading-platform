@@ -18,6 +18,20 @@ from bot.models import (
 
 STARTING_EQUITY = 5000.0
 
+# Approximate quote-currency-to-USD rates for position sizing.
+# Used when the instrument's quote currency is not USD.
+# Updated periodically — precision is sufficient for paper trading sizing.
+_QUOTE_TO_USD: dict[str, float] = {
+    "USD": 1.0,
+    "GBP": 1.26,
+    "EUR": 1.08,
+    "AUD": 0.65,
+    "NZD": 0.58,
+    "CAD": 0.74,
+    "CHF": 1.13,
+    "JPY": 0.0067,  # 1/150
+}
+
 # Per-asset-class correlation limits — how many same-direction positions allowed
 _ASSET_CLASS_CORRELATION_LIMITS: dict[AssetClass, int] = {
     AssetClass.FOREX: 4,
@@ -217,11 +231,19 @@ class RiskManager:
         if stop_pips == 0:
             return 0.0
 
-        # Units = risk_amount / (stop_pips * pip_value_per_unit)
-        units = risk_amount / (stop_pips * instrument.pip_value_per_unit)
+        # Convert pip_value to USD if quote currency is not USD
+        pip_value_usd = instrument.pip_value_per_unit * _QUOTE_TO_USD.get(
+            instrument.quote_currency, 1.0
+        )
 
-        # Cap at max leverage (30:1 for forex)
-        max_units = (portfolio.total_equity * instrument.max_leverage) / signal.entry_price
+        # Units = risk_amount_usd / (stop_pips * pip_value_usd_per_unit)
+        units = risk_amount / (stop_pips * pip_value_usd)
+
+        # Cap at max leverage — convert entry_price to USD for non-USD quoted
+        entry_usd = signal.entry_price * _QUOTE_TO_USD.get(
+            instrument.quote_currency, 1.0
+        )
+        max_units = (portfolio.total_equity * instrument.max_leverage) / entry_usd
         units = min(units, max_units)
 
         # Round to whole units (OANDA accepts fractional but whole is cleaner)

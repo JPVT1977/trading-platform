@@ -111,6 +111,12 @@ INSERT_PORTFOLIO_SNAPSHOT = """
         open_position_count, daily_pnl, daily_trades, broker
     )
     VALUES (NOW(), $1, $2, $3, $4, $5, $6)
+    ON CONFLICT (time, broker) DO UPDATE SET
+        total_equity = EXCLUDED.total_equity,
+        available_balance = EXCLUDED.available_balance,
+        open_position_count = EXCLUDED.open_position_count,
+        daily_pnl = EXCLUDED.daily_pnl,
+        daily_trades = EXCLUDED.daily_trades
 """
 
 SELECT_DAILY_PNL = """

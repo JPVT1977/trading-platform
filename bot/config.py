@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     dashboard_user_1_email: str = "jp@nucleus360.com.au"
     dashboard_user_1_password: str = ""
     dashboard_user_1_name: str = "JP"
-    dashboard_user_2_email: str = "sam@nucleus360.com.au"
+    dashboard_user_2_email: str = "sam@lane.com.au"
     dashboard_user_2_password: str = ""
     dashboard_user_2_name: str = "Sam"
 

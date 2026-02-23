@@ -119,27 +119,38 @@ class IGSession:
         session = await self._ensure_session()
         url = f"{self._base_url}{path}"
 
-        resp = await session.request(
+        async with session.request(
             method, url, headers=self._auth_headers(version), **kwargs
-        )
+        ) as resp:
+            # Re-authenticate once on 401
+            if resp.status == 401:
+                logger.warning("IG 401 — re-authenticating")
+                await self._login()
+                # Fall through to retry below
+            else:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    raise RuntimeError(
+                        f"IG API error ({resp.status} {method} {path}): {body}"
+                    )
+                text = await resp.text()
+                if not text:
+                    return {}
+                return await resp.json(content_type=None)
 
-        # Re-authenticate once on 401
-        if resp.status == 401:
-            logger.warning("IG 401 — re-authenticating")
-            await self._login()
-            resp = await session.request(
-                method, url, headers=self._auth_headers(version), **kwargs
-            )
-
-        if resp.status >= 400:
-            body = await resp.text()
-            raise RuntimeError(f"IG API error ({resp.status} {method} {path}): {body}")
-
-        # Some endpoints return empty body (e.g. DELETE)
-        text = await resp.text()
-        if not text:
-            return {}
-        return await resp.json(content_type=None)
+        # Retry after re-authentication
+        async with session.request(
+            method, url, headers=self._auth_headers(version), **kwargs
+        ) as resp:
+            if resp.status >= 400:
+                body = await resp.text()
+                raise RuntimeError(
+                    f"IG API error ({resp.status} {method} {path}): {body}"
+                )
+            text = await resp.text()
+            if not text:
+                return {}
+            return await resp.json(content_type=None)
 
     async def close(self) -> None:
         """Close the underlying HTTP session."""

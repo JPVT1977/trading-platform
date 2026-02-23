@@ -19,6 +19,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from bot.instruments import get_instrument
 from bot.layer1_data.broker_interface import BrokerInterface
 from bot.layer1_data.ig_rate_limiter import IGRateLimiter
 from bot.layer1_data.ig_session import IGSession
@@ -177,6 +178,7 @@ class IGClient(BrokerInterface):
         """Place a limit working order on IG."""
         await self._limiter.acquire("trading")
         direction = "BUY" if side == "buy" else "SELL"
+        currency = get_instrument(symbol).quote_currency
 
         payload = {
             "epic": symbol,
@@ -187,7 +189,7 @@ class IGClient(BrokerInterface):
             "timeInForce": "GOOD_TILL_CANCELLED",
             "guaranteedStop": False,
             "forceOpen": True,
-            "currencyCode": "USD",
+            "currencyCode": currency,
         }
 
         data = await self._session.request(
@@ -209,6 +211,7 @@ class IGClient(BrokerInterface):
         """Place a stop working order on IG."""
         await self._limiter.acquire("trading")
         direction = "BUY" if side == "buy" else "SELL"
+        currency = get_instrument(symbol).quote_currency
 
         payload = {
             "epic": symbol,
@@ -219,7 +222,7 @@ class IGClient(BrokerInterface):
             "timeInForce": "GOOD_TILL_CANCELLED",
             "guaranteedStop": False,
             "forceOpen": True,
-            "currencyCode": "USD",
+            "currencyCode": currency,
         }
 
         data = await self._session.request(
