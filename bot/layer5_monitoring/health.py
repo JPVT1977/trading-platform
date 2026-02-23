@@ -62,9 +62,11 @@ class HealthServer:
             context_processors=[self._global_context],
         )
 
-        # Register custom Jinja2 filters
+        # Register custom Jinja2 filters and globals
         env = aiohttp_jinja2.get_env(self._app)
         env.filters["to_melb"] = _to_melb
+        from bot.instruments import get_asset_class as _get_ac
+        env.globals["get_asset_class"] = lambda sym: _get_ac(sym).value
 
         # Static files
         static_dir = Path(__file__).parent.parent / "dashboard" / "static"

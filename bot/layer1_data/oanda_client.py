@@ -8,24 +8,23 @@ backoff via tenacity.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
+import oandapyV20
+import oandapyV20.endpoints.accounts as accounts_ep
+import oandapyV20.endpoints.instruments as instruments_ep
+import oandapyV20.endpoints.orders as orders_ep
+import oandapyV20.endpoints.pricing as pricing_ep
 from loguru import logger
+from oandapyV20.exceptions import V20Error
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
-
-import oandapyV20
-import oandapyV20.endpoints.instruments as instruments_ep
-import oandapyV20.endpoints.orders as orders_ep
-import oandapyV20.endpoints.pricing as pricing_ep
-import oandapyV20.endpoints.accounts as accounts_ep
-from oandapyV20.exceptions import V20Error
 
 from bot.layer1_data.broker_interface import BrokerInterface
 from bot.models import Candle
@@ -43,6 +42,9 @@ _TF_MAP = {
 class OandaClient(BrokerInterface):
     """OANDA v20 REST API broker implementation."""
 
+    # Minimum delay between consecutive requests to avoid 429s
+    _REQUEST_DELAY_S = 0.05  # 50ms
+
     def __init__(self, settings: Settings) -> None:
         environment = "practice" if settings.oanda_sandbox else "live"
         self._api = oandapyV20.API(
@@ -51,10 +53,20 @@ class OandaClient(BrokerInterface):
         )
         self._account_id = settings.oanda_account_id
         self._settings = settings
+        self._last_request_time: float = 0.0
 
     @property
     def broker_id(self) -> str:
         return "oanda"
+
+    async def _throttle(self) -> None:
+        """Enforce minimum delay between consecutive OANDA requests."""
+        import time
+        now = time.monotonic()
+        elapsed = now - self._last_request_time
+        if elapsed < self._REQUEST_DELAY_S:
+            await asyncio.sleep(self._REQUEST_DELAY_S - elapsed)
+        self._last_request_time = time.monotonic()
 
     def _run_sync(self, func, *args, **kwargs):
         """Run a synchronous oandapyV20 call in the thread pool."""
@@ -73,6 +85,7 @@ class OandaClient(BrokerInterface):
         self, symbol: str, timeframe: str, limit: int | None = None
     ) -> list[Candle]:
         """Fetch OHLCV candles from OANDA. Uses midpoint prices."""
+        await self._throttle()
         granularity = _TF_MAP.get(timeframe, "H1")
         count = limit or self._settings.lookback_candles
 
@@ -113,6 +126,7 @@ class OandaClient(BrokerInterface):
     )
     async def fetch_ticker(self, symbol: str) -> dict:
         """Fetch current bid/ask/mid pricing from OANDA."""
+        await self._throttle()
         params = {"instruments": symbol}
         ep = pricing_ep.PricingInfo(accountID=self._account_id, params=params)
         response = await self._run_sync(self._api.request, ep)
@@ -135,6 +149,7 @@ class OandaClient(BrokerInterface):
     )
     async def fetch_balance(self) -> dict:
         """Fetch OANDA account summary."""
+        await self._throttle()
         ep = accounts_ep.AccountSummary(accountID=self._account_id)
         response = await self._run_sync(self._api.request, ep)
         account = response.get("account", {})
@@ -153,6 +168,7 @@ class OandaClient(BrokerInterface):
         self, symbol: str, side: str, amount: float, price: float
     ) -> dict:
         """Place a limit order on OANDA. Negative units = sell."""
+        await self._throttle()
         units = str(int(amount)) if side == "buy" else str(-int(amount))
         data = {
             "order": {
@@ -180,6 +196,7 @@ class OandaClient(BrokerInterface):
         self, symbol: str, side: str, amount: float, stop_price: float
     ) -> dict:
         """Place a stop order on OANDA."""
+        await self._throttle()
         units = str(int(amount)) if side == "buy" else str(-int(amount))
         data = {
             "order": {
@@ -200,6 +217,7 @@ class OandaClient(BrokerInterface):
 
     async def cancel_order(self, order_id: str, symbol: str) -> dict:
         """Cancel an OANDA order."""
+        await self._throttle()
         ep = orders_ep.OrderCancel(accountID=self._account_id, orderID=order_id)
         response = await self._run_sync(self._api.request, ep)
         logger.info(f"OANDA order {order_id} cancelled")
@@ -207,6 +225,7 @@ class OandaClient(BrokerInterface):
 
     async def check_connectivity(self) -> None:
         """Verify OANDA API connectivity by fetching account summary."""
+        await self._throttle()
         ep = accounts_ep.AccountSummary(accountID=self._account_id)
         await self._run_sync(self._api.request, ep)
 

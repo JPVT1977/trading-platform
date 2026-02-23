@@ -20,6 +20,7 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Broker</th>
+                    <th>Class</th>
                     <th>Direction</th>
                     <th>Entry</th>
                     <th>Current</th>
@@ -39,10 +40,13 @@
                     <td>
                         {% if p.broker is defined and p.broker == 'oanda' %}
                         <span class="badge badge-info" style="font-size:10px;">OANDA</span>
+                        {% elif p.broker is defined and p.broker == 'ig' %}
+                        <span class="badge badge-warning" style="font-size:10px;">IG</span>
                         {% else %}
                         <span class="badge badge-muted" style="font-size:10px;">Binance</span>
                         {% endif %}
                     </td>
+                    <td class="text-sm text-muted">{{ get_asset_class(p.symbol) }}</td>
                     <td><span class="badge badge-{{ p.direction }}">{{ p.direction }}</span></td>
                     <td class="mono">{{ "%.2f" | format(p.entry_price) }}</td>
                     <td class="mono">
@@ -71,7 +75,7 @@
                     </td>
                 </tr>
                 <tr class="expand-content" id="expand-open-{{ p.id }}">
-                    <td colspan="12">
+                    <td colspan="13">
                         <strong>Trigger:</strong> {{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}
                         &nbsp;|&nbsp; <strong>Confidence:</strong> {{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%
                         <br><strong>Signal Reasoning:</strong> {{ p.reasoning or 'N/A' }}
@@ -79,7 +83,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="12" class="text-muted" style="text-align:center;padding:40px;">No open positions</td></tr>
+                <tr><td colspan="13" class="text-muted" style="text-align:center;padding:40px;">No open positions</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -94,6 +98,7 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Broker</th>
+                    <th>Class</th>
                     <th>Direction</th>
                     <th>Trigger</th>
                     <th>Confidence</th>
@@ -112,10 +117,13 @@
                     <td>
                         {% if p.broker is defined and p.broker == 'oanda' %}
                         <span class="badge badge-info" style="font-size:10px;">OANDA</span>
+                        {% elif p.broker is defined and p.broker == 'ig' %}
+                        <span class="badge badge-warning" style="font-size:10px;">IG</span>
                         {% else %}
                         <span class="badge badge-muted" style="font-size:10px;">Binance</span>
                         {% endif %}
                     </td>
+                    <td class="text-sm text-muted">{{ get_asset_class(p.symbol) }}</td>
                     <td><span class="badge badge-{{ p.direction }}">{{ p.direction }}</span></td>
                     <td class="text-sm">{{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}</td>
                     <td class="mono">{{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%</td>
@@ -134,13 +142,13 @@
                     <td class="mono text-sm">{{ (p.closed_at|to_melb).strftime('%m-%d %H:%M') if p.closed_at else '-' }}</td>
                 </tr>
                 <tr class="expand-content" id="expand-closed-{{ p.id }}">
-                    <td colspan="11">
+                    <td colspan="12">
                         <strong>Signal Reasoning:</strong> {{ p.reasoning or 'N/A' }}
                         <br><strong>SL:</strong> {{ "%.2f" | format(p.stop_loss) }} | <strong>TP1:</strong> {{ "%.2f" | format(p.take_profit_1) }}
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="11" class="text-muted" style="text-align:center;padding:40px;">No closed positions</td></tr>
+                <tr><td colspan="12" class="text-muted" style="text-align:center;padding:40px;">No closed positions</td></tr>
                 {% endfor %}
             </tbody>
         </table>

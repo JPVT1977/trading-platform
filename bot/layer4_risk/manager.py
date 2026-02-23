@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from loguru import logger
 
-from bot.config import Settings, TradingMode
-from bot.database.connection import Database
+from bot.config import Settings
 from bot.database import queries
-from bot.instruments import get_instrument, is_forex, route_symbol
+from bot.database.connection import Database
+from bot.instruments import AssetClass, get_asset_class, get_instrument, is_oanda
 from bot.models import (
     DivergenceSignal,
     OrderState,
@@ -17,6 +17,15 @@ from bot.models import (
 )
 
 STARTING_EQUITY = 5000.0
+
+# Per-asset-class correlation limits — how many same-direction positions allowed
+_ASSET_CLASS_CORRELATION_LIMITS: dict[AssetClass, int] = {
+    AssetClass.FOREX: 4,
+    AssetClass.INDEX: 3,
+    AssetClass.COMMODITY: 3,
+    AssetClass.BOND: 1,
+    AssetClass.CRYPTO: 4,
+}
 
 
 class RiskManager:
@@ -46,7 +55,7 @@ class RiskManager:
         """
 
         # Auto-reset circuit breaker at start of new day
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         if self._circuit_breaker_active and self._circuit_breaker_tripped_date != today:
             logger.info("Circuit breaker auto-reset (new trading day)")
             self.reset_circuit_breaker()
@@ -77,7 +86,10 @@ class RiskManager:
                     reason=self._circuit_breaker_reason or "Daily loss limit exceeded",
                 )
 
-        active_states = {OrderState.PENDING, OrderState.SUBMITTED, OrderState.FILLED, OrderState.PARTIALLY_FILLED}
+        active_states = {
+            OrderState.PENDING, OrderState.SUBMITTED,
+            OrderState.FILLED, OrderState.PARTIALLY_FILLED,
+        }
 
         # Check 3: Duplicate symbol — same direction blocked, opposite = reversal
         for p in portfolio.open_positions:
@@ -92,34 +104,51 @@ class RiskManager:
                     # Same direction = already positioned
                     return RiskCheckResult(
                         approved=False,
-                        reason=f"Already {p.direction.value if hasattr(p.direction, 'value') else p.direction} on {signal.symbol}",
+                        reason=(
+                            f"Already "
+                            f"{p.direction.value if hasattr(p.direction, 'value') else p.direction}"
+                            f" on {signal.symbol}"
+                        ),
                     )
 
         # Per-broker limits
         max_positions = self._settings.get_max_open_positions(broker_id)
-        max_correlation = self._settings.get_max_correlation_exposure(broker_id)
 
         # Check 4: Max open positions (per-broker)
-        open_count = sum(1 for p in portfolio.open_positions if p.state in active_states)
+        open_count = sum(
+            1 for p in portfolio.open_positions
+            if p.state in active_states
+        )
         if open_count >= max_positions:
             return RiskCheckResult(
                 approved=False,
-                reason=f"Max open positions ({max_positions}) reached for {broker_id} ({open_count} open)",
+                reason=(
+                    f"Max open positions ({max_positions}) reached "
+                    f"for {broker_id} ({open_count} open)"
+                ),
             )
 
-        # Check 5: Correlation exposure — same-direction positions (per-broker)
+        # Check 5: Correlation exposure — per asset class, not global
+        # Cross-asset positions do NOT block each other
         if signal.direction is not None:
-            same_direction_count = sum(
-                1 for p in portfolio.open_positions
-                if p.state in active_states and p.direction == signal.direction
+            signal_ac = get_asset_class(signal.symbol)
+            max_corr = _ASSET_CLASS_CORRELATION_LIMITS.get(
+                signal_ac, 4
             )
-            if same_direction_count >= max_correlation:
+            same_class_same_dir = sum(
+                1 for p in portfolio.open_positions
+                if p.state in active_states
+                and p.direction == signal.direction
+                and get_asset_class(p.symbol) == signal_ac
+            )
+            if same_class_same_dir >= max_corr:
                 return RiskCheckResult(
                     approved=False,
                     reason=(
-                        f"Correlation limit: {same_direction_count} "
-                        f"{signal.direction.value} positions already open "
-                        f"(max {max_correlation} for {broker_id})"
+                        f"Correlation limit: {same_class_same_dir} "
+                        f"{signal.direction.value} {signal_ac.value} "
+                        f"positions already open "
+                        f"(max {max_corr} for {signal_ac.value})"
                     ),
                 )
 
@@ -128,9 +157,9 @@ class RiskManager:
     def calculate_position_size(
         self, signal: DivergenceSignal, portfolio: PortfolioState
     ) -> float:
-        """Dispatch to crypto or forex sizing based on symbol."""
-        if is_forex(signal.symbol):
-            return self._calculate_forex_position_size(signal, portfolio)
+        """Dispatch to crypto or OANDA sizing based on symbol."""
+        if is_oanda(signal.symbol):
+            return self._calculate_oanda_position_size(signal, portfolio)
         return self._calculate_crypto_position_size(signal, portfolio)
 
     def _calculate_crypto_position_size(
@@ -166,13 +195,13 @@ class RiskManager:
 
         return position_size
 
-    def _calculate_forex_position_size(
+    def _calculate_oanda_position_size(
         self, signal: DivergenceSignal, portfolio: PortfolioState
     ) -> float:
-        """Pip-based forex position sizing.
+        """Pip-based position sizing for all OANDA instruments.
 
         units = risk_amount / (stop_distance_pips * pip_value_per_unit)
-        Capped at 30:1 leverage.
+        Capped at instrument-specific max leverage.
         """
         if signal.entry_price is None or signal.stop_loss is None:
             return 0.0
@@ -216,6 +245,8 @@ class RiskManager:
         # Determine starting equity for this broker
         if broker_id == "oanda":
             starting_eq = self._settings.oanda_starting_equity
+        elif broker_id == "ig":
+            starting_eq = self._settings.ig_starting_equity
         else:
             starting_eq = STARTING_EQUITY
 
@@ -287,7 +318,9 @@ class RiskManager:
                         f"[{broker_id}] Equity ${current_equity:.2f} is {drawdown_pct:.1f}% below "
                         f"peak ${peak_equity:.2f} (limit: {self._settings.max_drawdown_pct}%)"
                     )
-                    logger.critical(f"DRAWDOWN KILL SWITCH TRIPPED: {self._drawdown_breaker_reason}")
+                    logger.critical(
+                        f"DRAWDOWN KILL SWITCH TRIPPED: {self._drawdown_breaker_reason}"
+                    )
                     try:
                         await self._db.pool.execute(
                             queries.INSERT_CIRCUIT_BREAKER_EVENT,
@@ -307,7 +340,7 @@ class RiskManager:
         """Activate the daily circuit breaker — halt all trading until midnight UTC."""
         self._circuit_breaker_active = True
         self._circuit_breaker_reason = reason
-        self._circuit_breaker_tripped_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        self._circuit_breaker_tripped_date = datetime.now(UTC).strftime("%Y-%m-%d")
         logger.critical(f"CIRCUIT BREAKER TRIPPED: {reason}")
 
     def reset_circuit_breaker(self) -> None:

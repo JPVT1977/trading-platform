@@ -12,6 +12,7 @@
                 <th>Entry</th>
                 <th>SL</th>
                 <th>Broker</th>
+                <th>Class</th>
                 <th>Status</th>
                 <th>Reason</th>
             </tr>
@@ -37,10 +38,13 @@
                 <td>
                     {% if s.broker is defined and s.broker == 'oanda' %}
                     <span class="badge badge-info" style="font-size:10px;">OANDA</span>
+                    {% elif s.broker is defined and s.broker == 'ig' %}
+                    <span class="badge badge-warning" style="font-size:10px;">IG</span>
                     {% else %}
                     <span class="badge badge-muted" style="font-size:10px;">Binance</span>
                     {% endif %}
                 </td>
+                <td class="text-sm text-muted">{{ get_asset_class(s.symbol) }}</td>
                 <td>
                     {% if s.validated %}
                     <span class="badge badge-success">Pass</span>
@@ -53,7 +57,7 @@
                 </td>
             </tr>
             <tr class="expand-content" id="expand-{{ s.id }}">
-                <td colspan="12">
+                <td colspan="13">
                     <strong>Reasoning:</strong> {{ s.reasoning or 'No reasoning provided' }}
                     {% if s.take_profit_1 %}
                     <br><strong>TP1:</strong> {{ "%.2f" | format(s.take_profit_1) }}
@@ -64,7 +68,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="12" class="text-muted" style="text-align:center;padding:40px;">No signals found</td></tr>
+            <tr><td colspan="13" class="text-muted" style="text-align:center;padding:40px;">No signals found</td></tr>
             {% endfor %}
         </tbody>
     </table>
