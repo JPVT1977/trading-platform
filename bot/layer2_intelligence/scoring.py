@@ -140,8 +140,8 @@ def _score_session(signal: DivergenceSignal) -> float:
         # Tokyo (00:00-09:00 UTC) or Sydney (22:00-07:00 UTC) — off-peak
         return -0.5
 
-    if asset_class == AssetClass.INDEX:
-        # Index: primary session hours (roughly US market hours in UTC)
+    if asset_class in (AssetClass.INDEX, AssetClass.STOCK):
+        # Index/Stocks: primary session hours (roughly US market hours in UTC)
         if 14 <= hour < 21:
             return 0.5
         if 7 <= hour < 16:

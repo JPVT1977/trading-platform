@@ -22,6 +22,7 @@ class AssetClass(StrEnum):
     INDEX = "index"
     COMMODITY = "commodity"
     BOND = "bond"
+    STOCK = "stock"
 
 
 @dataclass(frozen=True)
@@ -260,6 +261,13 @@ OANDA_INSTRUMENTS: dict[str, InstrumentInfo] = {
         max_leverage=10.0, fee_rate=0.0,
         base_currency="USB", quote_currency="USD",
     ),
+    "USB02Y_USD": InstrumentInfo(
+        symbol="USB02Y_USD", broker=BrokerType.OANDA, display_name="US 2Y Treasury",
+        asset_class=AssetClass.BOND,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=10.0, fee_rate=0.0,
+        base_currency="USB", quote_currency="USD",
+    ),
 }
 
 # Backward-compatible alias
@@ -296,6 +304,63 @@ IG_INSTRUMENTS: dict[str, InstrumentInfo] = {
         pip_size=0.1, pip_value_per_unit=0.1, min_units=1,
         max_leverage=20.0, fee_rate=0.0,
         base_currency="XAU", quote_currency="USD",
+    ),
+    # Share CFDs — US Mega-caps
+    "UA.D.NVDA.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.NVDA.DAILY.IP", broker=BrokerType.IG, display_name="NVIDIA",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="NVDA", quote_currency="USD",
+    ),
+    "UA.D.AAPL.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.AAPL.DAILY.IP", broker=BrokerType.IG, display_name="Apple",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="AAPL", quote_currency="USD",
+    ),
+    "UA.D.MSFT.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.MSFT.DAILY.IP", broker=BrokerType.IG, display_name="Microsoft",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="MSFT", quote_currency="USD",
+    ),
+    "UA.D.AMZN.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.AMZN.DAILY.IP", broker=BrokerType.IG, display_name="Amazon",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="AMZN", quote_currency="USD",
+    ),
+    "UA.D.TSLA.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.TSLA.DAILY.IP", broker=BrokerType.IG, display_name="Tesla",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="TSLA", quote_currency="USD",
+    ),
+    "UA.D.META.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.META.DAILY.IP", broker=BrokerType.IG, display_name="Meta",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="META", quote_currency="USD",
+    ),
+    "UA.D.GOOGL.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.GOOGL.DAILY.IP", broker=BrokerType.IG, display_name="Alphabet",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="GOOGL", quote_currency="USD",
+    ),
+    "UA.D.AVGO.DAILY.IP": InstrumentInfo(
+        symbol="UA.D.AVGO.DAILY.IP", broker=BrokerType.IG, display_name="Broadcom",
+        asset_class=AssetClass.STOCK,
+        pip_size=0.01, pip_value_per_unit=0.01, min_units=1,
+        max_leverage=5.0, fee_rate=0.0,
+        base_currency="AVGO", quote_currency="USD",
     ),
 }
 
