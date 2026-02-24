@@ -32,7 +32,7 @@ from loguru import logger
 
 from bot.config import Settings
 from bot.database.connection import Database
-from bot.instruments import route_symbol
+from bot.instruments import is_ig_stock, route_symbol
 from bot.layer1_data.broker_router import BrokerRouter
 from bot.layer1_data.indicators import compute_indicators
 from bot.layer1_data.market_data import MarketDataClient
@@ -649,9 +649,24 @@ async def main() -> None:
     # Register IG Markets if configured
     if settings.ig_enabled:
         from bot.layer1_data.ig_client import IGClient
-        ig = IGClient(settings)
-        router.register(ig)
-        logger.info(f"IG Markets enabled: {settings.ig_symbols}")
+        ig_client = IGClient(settings)
+
+        # Wrap in IGStockBroker if any stock symbols need Yahoo Finance for data
+        if any(is_ig_stock(s) for s in settings.ig_symbols):
+            from bot.layer1_data.ig_stock_broker import IGStockBroker
+            from bot.layer1_data.yahoo_provider import YahooProvider
+            yahoo = YahooProvider()
+            ig_broker = IGStockBroker(ig_client, yahoo, settings)
+            stock_count = sum(1 for s in settings.ig_symbols if is_ig_stock(s))
+            logger.info(
+                f"IG Markets enabled: {settings.ig_symbols} "
+                f"({stock_count} stocks via Yahoo Finance)"
+            )
+        else:
+            ig_broker = ig_client
+            logger.info(f"IG Markets enabled: {settings.ig_symbols}")
+
+        router.register(ig_broker)
     else:
         logger.info("IG Markets not configured — skipping")
 

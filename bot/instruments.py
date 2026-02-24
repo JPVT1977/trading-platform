@@ -364,6 +364,24 @@ IG_INSTRUMENTS: dict[str, InstrumentInfo] = {
     ),
 }
 
+# Epic-to-ticker mapping for Yahoo Finance data (must stay in sync with stock
+# entries in IG_INSTRUMENTS above).
+IG_EPIC_TO_TICKER: dict[str, str] = {
+    "UC.D.NVDA.CASH.IP": "NVDA",
+    "UA.D.AAPL.CASH.IP": "AAPL",
+    "UC.D.MSFT.CASH.IP": "MSFT",
+    "UA.D.AMZN.CASH.IP": "AMZN",
+    "UD.D.TSLA.CASH.IP": "TSLA",
+    "UB.D.FB.CASH.IP": "META",
+    "UB.D.GOOGL.CASH.IP": "GOOGL",
+    "UA.D.AVGO.CASH.IP": "AVGO",
+}
+
+
+def is_ig_stock(symbol: str) -> bool:
+    """Check if a symbol is an IG stock CFD (requires Yahoo Finance for data)."""
+    return symbol in IG_EPIC_TO_TICKER
+
 
 def is_ig(symbol: str) -> bool:
     """Check if a symbol is an IG Markets instrument."""

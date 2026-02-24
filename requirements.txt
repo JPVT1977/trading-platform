@@ -1,6 +1,7 @@
 # Exchange & market data
 ccxt>=4.4.0
 oandapyV20>=0.7.2
+yfinance>=0.2.36
 
 # Technical analysis (requires system TA-Lib: brew install ta-lib)
 TA-Lib>=0.6.0
