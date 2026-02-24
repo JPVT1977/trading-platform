@@ -75,11 +75,11 @@ class Settings(BaseSettings):
     binance_max_correlation_exposure: int = 3
     binance_min_confidence: float = 0.7
 
-    oanda_max_open_positions: int = 10
+    oanda_max_open_positions: int = 5
     oanda_max_correlation_exposure: int = 3
     oanda_min_confidence: float = 0.7
 
-    ig_max_open_positions: int = 4
+    ig_max_open_positions: int = 5
     ig_max_correlation_exposure: int = 3
     ig_min_confidence: float = 0.7
 
