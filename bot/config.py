@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     min_divergence_magnitude_rsi: float = 5.0
     volume_sma_period: int = 20
     candle_gate_lookback: int = 3
-    volume_low_threshold: float = 0.5
+    volume_low_threshold: float = 0.35
 
     lookback_candles: int = 200
     payload_lookback: int = 30
