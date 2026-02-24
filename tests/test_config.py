@@ -14,6 +14,8 @@ def test_default_settings():
     assert s.exchange_sandbox is True
     assert s.max_position_pct == 2.0
     assert s.max_open_positions == 4
+    assert s.oanda_max_open_positions == 10
+    assert s.binance_max_open_positions == 2
     assert s.min_risk_reward == 2.0
     assert s.analysis_interval_minutes == 1
     assert s.max_drawdown_pct == 15.0

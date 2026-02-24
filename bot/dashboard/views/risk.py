@@ -48,6 +48,13 @@ class RiskViews:
         short_count = sum(1 for r in open_rows if r["direction"] == "short")
         correlation_count = max(long_count, short_count)
 
+        # Sum per-broker position limits for accurate total
+        max_positions_total = (
+            self._settings.oanda_max_open_positions
+            + self._settings.binance_max_open_positions
+            + self._settings.ig_max_open_positions
+        )
+
         return {
             "limits": {
                 "daily_loss": {
@@ -60,10 +67,10 @@ class RiskViews:
                 },
                 "open_positions": {
                     "current": open_count,
-                    "max": self._settings.max_open_positions,
+                    "max": max_positions_total,
                     "pct": (
-                        open_count / self._settings.max_open_positions * 100
-                        if self._settings.max_open_positions > 0 else 0
+                        open_count / max_positions_total * 100
+                        if max_positions_total > 0 else 0
                     ),
                 },
                 "correlation": {
