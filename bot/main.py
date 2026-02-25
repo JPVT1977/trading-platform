@@ -373,6 +373,14 @@ async def analysis_cycle(
                 else:
                     candle_status = "forming"
 
+                # Skip forming candles — only analyse when a new candle closes.
+                # This avoids re-calling Claude on unchanged data every cycle
+                # and reduces API costs by ~95%.
+                if candle_status == "forming":
+                    logger.debug(f"Skipping {candle_key}: candle still forming")
+                    result.symbol_details[candle_key] = "forming (skipped)"
+                    continue
+
                 # Signal-level dedup: skip if we already found a divergence on this candle
                 if _signaled_candles.get(candle_key) == latest_ts:
                     logger.debug(f"Skipping {candle_key}: already signaled on this candle")
