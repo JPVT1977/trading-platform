@@ -58,7 +58,30 @@ class IGStockBroker(BrokerInterface):
         return await self._ig.fetch_ohlcv(symbol, timeframe, limit)
 
     async def fetch_ticker(self, symbol: str) -> dict:
-        return await self._ig.fetch_ticker(symbol)
+        """Fetch current price — IG first, Yahoo fallback for stocks.
+
+        IG demo accounts return null bid/offer for stock CFDs, so we
+        fall back to Yahoo Finance for any stock epic in the ticker map.
+        """
+        result = await self._ig.fetch_ticker(symbol)
+        if result.get("last"):
+            return result
+
+        # IG returned no price — try Yahoo for stock CFDs
+        yahoo_ticker = self._epic_to_ticker.get(symbol)
+        if yahoo_ticker:
+            try:
+                yahoo_result = await self._yahoo.fetch_ticker(yahoo_ticker)
+                if yahoo_result.get("last"):
+                    logger.debug(
+                        f"IGStockBroker: ticker for {symbol} via Yahoo/{yahoo_ticker} "
+                        f"(IG returned null)"
+                    )
+                    return yahoo_result
+            except Exception as e:
+                logger.warning(f"Yahoo ticker fallback failed for {symbol}: {e}")
+
+        return result
 
     async def fetch_balance(self) -> dict:
         return await self._ig.fetch_balance()

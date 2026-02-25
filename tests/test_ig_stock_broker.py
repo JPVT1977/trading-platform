@@ -95,16 +95,59 @@ async def test_fetch_ohlcv_commodity_delegates_to_ig(
 
 
 @pytest.mark.asyncio
-async def test_fetch_ticker_always_uses_ig(
-    broker: IGStockBroker, mock_ig: AsyncMock
+async def test_fetch_ticker_uses_ig_when_available(
+    broker: IGStockBroker, mock_ig: AsyncMock, mock_yahoo: AsyncMock
 ) -> None:
-    """Live price always comes from IG (bid/ask spread matters)."""
+    """When IG returns a valid price, use it directly."""
     mock_ig.fetch_ticker.return_value = {"last": 130.0, "bid": 129.9, "ask": 130.1}
 
     result = await broker.fetch_ticker("UC.D.NVDA.CASH.IP")
 
     mock_ig.fetch_ticker.assert_awaited_once_with("UC.D.NVDA.CASH.IP")
+    mock_yahoo.fetch_ticker.assert_not_awaited()
     assert result["last"] == 130.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_ticker_falls_back_to_yahoo_for_stocks(
+    broker: IGStockBroker, mock_ig: AsyncMock, mock_yahoo: AsyncMock
+) -> None:
+    """When IG returns null/zero for a stock, fall back to Yahoo."""
+    mock_ig.fetch_ticker.return_value = {"last": None, "bid": 0.0, "ask": 0.0}
+    mock_yahoo.fetch_ticker.return_value = {"last": 228.5, "bid": 228.5, "ask": 228.5}
+
+    result = await broker.fetch_ticker("UA.D.AAPL.CASH.IP")
+
+    mock_ig.fetch_ticker.assert_awaited_once()
+    mock_yahoo.fetch_ticker.assert_awaited_once_with("AAPL")
+    assert result["last"] == 228.5
+
+
+@pytest.mark.asyncio
+async def test_fetch_ticker_no_yahoo_fallback_for_indices(
+    broker: IGStockBroker, mock_ig: AsyncMock, mock_yahoo: AsyncMock
+) -> None:
+    """Non-stock symbols don't fall back to Yahoo even if IG returns null."""
+    mock_ig.fetch_ticker.return_value = {"last": None, "bid": 0.0, "ask": 0.0}
+
+    result = await broker.fetch_ticker("IX.D.SPTRD.IFE.IP")
+
+    mock_ig.fetch_ticker.assert_awaited_once()
+    mock_yahoo.fetch_ticker.assert_not_awaited()
+    assert result["last"] is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_ticker_yahoo_fallback_failure_returns_ig_result(
+    broker: IGStockBroker, mock_ig: AsyncMock, mock_yahoo: AsyncMock
+) -> None:
+    """If Yahoo also fails, return the original IG result (graceful degradation)."""
+    mock_ig.fetch_ticker.return_value = {"last": None, "bid": 0.0, "ask": 0.0}
+    mock_yahoo.fetch_ticker.side_effect = Exception("Yahoo is down")
+
+    result = await broker.fetch_ticker("UC.D.NVDA.CASH.IP")
+
+    assert result["last"] is None
 
 
 @pytest.mark.asyncio

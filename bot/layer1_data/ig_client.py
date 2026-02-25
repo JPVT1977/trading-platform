@@ -146,9 +146,11 @@ class IGClient(BrokerInterface):
         data = await self._session.request("GET", f"/markets/{symbol}", version="3")
 
         snapshot = data.get("snapshot", {})
-        bid = float(snapshot.get("bid", 0))
-        ask = float(snapshot.get("offer", 0))
-        mid = (bid + ask) / 2 if (bid and ask) else bid or ask
+        raw_bid = snapshot.get("bid")
+        raw_ask = snapshot.get("offer")
+        bid = float(raw_bid) if raw_bid is not None else 0.0
+        ask = float(raw_ask) if raw_ask is not None else 0.0
+        mid = (bid + ask) / 2 if (bid and ask) else bid or ask or None
 
         return {"last": mid, "bid": bid, "ask": ask}
 

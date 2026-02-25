@@ -53,6 +53,25 @@ class YahooProvider:
     }
 
     @_RETRY_DECORATOR
+    async def fetch_ticker(self, ticker: str) -> dict:
+        """Fetch current price from Yahoo Finance.
+
+        Returns dict with 'last', 'bid', 'ask' keys matching the
+        BrokerInterface ticker format.
+        """
+        import yfinance as yf
+
+        def _get_price() -> dict:
+            t = yf.Ticker(ticker)
+            info = t.fast_info
+            last = getattr(info, "last_price", None)
+            prev = getattr(info, "previous_close", None)
+            price = last or prev
+            return {"last": price, "bid": price, "ask": price}
+
+        return await asyncio.to_thread(_get_price)
+
+    @_RETRY_DECORATOR
     async def fetch_ohlcv(
         self, ticker: str, timeframe: str, limit: int = 200
     ) -> list[Candle]:
