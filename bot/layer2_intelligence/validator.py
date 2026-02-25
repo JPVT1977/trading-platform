@@ -111,10 +111,10 @@ def validate_signal(
                 passed=False,
                 reason=f"Stop too tight: {atr_multiple:.1f}x ATR (minimum 0.5x)",
             )
-        if atr_multiple > 5.0:
+        if atr_multiple > 7.0:
             return ValidationResult(
                 passed=False,
-                reason=f"Stop too wide: {atr_multiple:.1f}x ATR (maximum 5.0x)",
+                reason=f"Stop too wide: {atr_multiple:.1f}x ATR (maximum 7.0x)",
             )
 
     # Rule 7: ADX trend strength — reject crypto signals in choppy markets

@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     max_daily_loss_pct: float = 5.0
     max_open_positions: int = 4
     max_correlation_exposure: int = 3
-    min_risk_reward: float = 2.0
+    min_risk_reward: float = 1.5
     min_confidence: float = 0.7
     max_drawdown_pct: float = 15.0
 
@@ -136,10 +136,10 @@ class Settings(BaseSettings):
     min_confirming_indicators: int = 2
     min_swing_bars_4h: int = 15
     min_swing_bars_1h: int = 10
-    min_divergence_magnitude_rsi: float = 5.0
+    min_divergence_magnitude_rsi: float = 3.0
     volume_sma_period: int = 20
     candle_gate_lookback: int = 3
-    volume_low_threshold: float = 0.35
+    volume_low_threshold: float = 0.10
 
     lookback_candles: int = 200
     payload_lookback: int = 30

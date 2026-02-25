@@ -223,7 +223,7 @@ class TestRule6ATRStopDistance:
         assert "too tight" in result.reason
 
     def test_rejects_stop_too_wide(self, settings):
-        # ATR=400, stop=2500 away = 6.25x ATR (above 5.0x maximum)
+        # ATR=400, stop=3200 away = 8.0x ATR (above 7.0x maximum)
         indicators = _make_indicators(atr_last=400.0)
         signal = DivergenceSignal(
             divergence_detected=True,
@@ -231,8 +231,8 @@ class TestRule6ATRStopDistance:
             reasoning="test",
             direction=SignalDirection.LONG,
             entry_price=42000,
-            stop_loss=39500,  # 2500 away
-            take_profit_1=46000,
+            stop_loss=38800,  # 3200 away
+            take_profit_1=47000,  # R:R = 5000/3200 = 1.56 (passes Rule 4)
             symbol="BTC/USDT",
             timeframe="4h",
         )
@@ -461,14 +461,14 @@ class TestRule11DivergenceMagnitude:
             indicator="RSI",
             confirming_indicators=["RSI", "MACD"],
             swing_length_bars=18,
-            divergence_magnitude=3.0,
+            divergence_magnitude=1.5,
         )
         result = validate_signal(signal, indicators, settings)
         assert not result.passed
         assert "magnitude" in result.reason
 
     def test_accepts_strong_rsi_magnitude(self, settings):
-        """Accept RSI divergence with magnitude >= 5.0."""
+        """Accept RSI divergence with magnitude >= 3.0."""
         indicators = _make_indicators()
         signal = DivergenceSignal(
             divergence_detected=True,
@@ -535,8 +535,8 @@ class TestRule12ZeroVolume:
 
 class TestRule13LowVolume:
     def test_rejects_low_volume(self, settings):
-        """Reject signals when current volume < 50% of SMA."""
-        vols = [1000.0] * 29 + [200.0]  # Last vol is 200, SMA is 1000 → 20%
+        """Reject signals when current volume < 10% of SMA."""
+        vols = [1000.0] * 29 + [50.0]  # Last vol is 50, SMA is 1000 → 5%
         indicators = _make_indicators(volumes=vols, volume_sma=[1000.0] * 30)
         signal = DivergenceSignal(
             divergence_detected=True,
@@ -557,8 +557,8 @@ class TestRule13LowVolume:
         assert "Low volume" in result.reason
 
     def test_accepts_adequate_volume(self, settings):
-        """Accept signals when current volume >= 50% of SMA."""
-        vols = [1000.0] * 29 + [600.0]  # 600/1000 = 60% > 50%
+        """Accept signals when current volume >= 10% of SMA."""
+        vols = [1000.0] * 29 + [600.0]  # 600/1000 = 60% > 10%
         indicators = _make_indicators(volumes=vols, volume_sma=[1000.0] * 30)
         signal = DivergenceSignal(
             divergence_detected=True,

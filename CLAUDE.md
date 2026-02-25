@@ -142,13 +142,14 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 
 | Parameter | Current Value | Purpose |
 |-----------|--------------|---------|
-| `volume_low_threshold` | 0.35 (35%) | Rule 13 — was 0.50, relaxed 25 Feb 2026 |
+| `volume_low_threshold` | 0.10 (10%) | Rule 13 — was 0.50→0.35→0.10 relaxed 25 Feb 2026 |
 | `min_divergence_score` | 5.0 | Minimum scoring threshold |
 | `min_confirming_indicators` | 2 | Rule 9 — oscillator confluence |
 | `min_swing_bars_4h` | 15 | Rule 10 — minimum 4h swing length |
 | `min_swing_bars_1h` | 10 | Rule 10 — minimum 1h swing length |
-| `min_divergence_magnitude_rsi` | 5.0 | Rule 11 — RSI magnitude floor |
-| `min_risk_reward` | 2.0 | Rule 4 — R:R floor |
+| `min_divergence_magnitude_rsi` | 3.0 | Rule 11 — RSI magnitude floor (was 5.0, relaxed 25 Feb 2026) |
+| `min_risk_reward` | 1.5 | Rule 4 — R:R floor (was 2.0, relaxed 25 Feb 2026) |
+| `max_atr_multiple` | 7.0 | Rule 6 — ATR stop width ceiling (was 5.0, relaxed 25 Feb 2026) |
 | `max_drawdown_pct` | 15.0 | Drawdown kill switch threshold |
 
 ---
