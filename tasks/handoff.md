@@ -3,7 +3,7 @@
 > Updated by Claude Code at the end of every session.
 > Read FIRST at the start of every new session.
 
-## Last Session — 25 February 2026 (backfill from git history)
+## Last Session — 26 February 2026
 
 ### What Was Done (Full Project History — 63 commits, 22–25 Feb 2026)
 
@@ -64,12 +64,22 @@
 - Skip Claude API calls on forming candles (cut costs ~95%)
 - Relaxed validator thresholds: min_risk_reward 2.0→1.5, max_atr_multiple 5.0→7.0, min_divergence_magnitude_rsi 5.0→3.0
 
+**Day 5 (26 Feb):** Validator loosening to get trades flowing.
+- Bot was detecting 35+ signals per cycle but zero trades executing — Rules 10, 13, 14 blocking everything
+- Rule 10: Loosened swing length minimums (min_swing_bars_4h 15→10, min_swing_bars_1h 10→7)
+- Rule 13: Disabled volume gate (volume_low_threshold 0.10→0.0) — was the #1 blocker (~15 rejections/cycle). Rule 12 (zero volume guard) still active as safety net
+- Rule 14: Made candlestick pattern requirement configurable (require_candle_pattern=False). High-confidence signals were being blocked purely for lacking a pattern in last 3 bars
+- Updated tests: 37 validator tests (147 total), added test_disabled_when_threshold_zero + test_skips_when_toggle_disabled
+- Set Fly.io secrets + deployed successfully. Health check OK.
+
 ### Decisions Made
 - **Composite broker pattern for IG stocks:** Yahoo Finance provides OHLCV data, IG handles orders. IG blocks historical data for stock CFDs (`unauthorised.access.to.equity.exception`).
 - **Only analyse closed candles:** Forming candles are skipped — saves ~95% Claude API cost. Only new candle close triggers analysis.
 - **Per-broker risk isolation:** Each broker has independent position limits, correlation limits, and confidence thresholds. Not pooled.
 - **Breakeven + profit-lock trailing SL:** At 50% progress to TP1, SL moves to entry (breakeven). At 75%, SL moves to entry + 25% of range.
-- **Validator relaxation trend (25 Feb):** Multiple thresholds relaxed to allow trades through during low-activity paper trading. These may need tightening before live.
+- **Validator relaxation trend (25–26 Feb):** Multiple thresholds relaxed to allow trades through during low-activity paper trading. These may need tightening before live.
+- **Rule 13 disabled (26 Feb):** Volume gate set to 0.0 — off-hours volume naturally low, SMA comparison penalises normal low-liquidity periods. Rule 12 (zero/near-zero guard) remains as safety net.
+- **Rule 14 made optional (26 Feb):** Candlestick pattern confirmation disabled via `require_candle_pattern=False`. Can be re-enabled via env var without redeploy if testing shows patterns improve win rate.
 - **AUD as base display currency:** All equity snapshots stored in AUD. Binance USD converted at a static rate (`_USD_TO_AUD`).
 - **Signal-level dedup:** Once a divergence is found on a candle, that candle is not re-analysed next cycle. Clears on new candle.
 
@@ -78,7 +88,7 @@
 **What works:**
 - Full analysis cycle: data fetch → TA-Lib indicators → Claude divergence detection → 15-rule validator → risk check → order execution → SL/TP monitoring → alerts
 - Three brokers: Binance (crypto, testnet), OANDA (forex/indices/commodities/bonds, practice), IG Markets (stocks/indices/commodities, demo)
-- 142 tests passing (excludes test_health.py — missing aiohttp_jinja2 dep)
+- 147 tests passing (excludes test_health.py — missing aiohttp_jinja2 dep)
 - Web dashboard with auth, equity curves, signal history, risk view, broker connections, public stats page
 - Telegram + SMS alerts on trade open/close and bot start/stop
 - Deployed on Fly.io Sydney (`jpvt-trading-bot`, machine `17810972a37ee8`)
@@ -105,17 +115,17 @@
 ### Known Issues
 - **CCXT SIGINT on first Fly.io boot:** Health check timeout during CCXT import. Machine auto-restarts and second boot succeeds. Do not try to fix.
 - **Static USD→AUD rate:** `_USD_TO_AUD` in risk manager is hardcoded, not fetched live. Acceptable for paper trading, needs addressing before live.
-- **Validator may be too relaxed:** Multiple thresholds were loosened on 25 Feb to get paper trades flowing. Review before live trading.
+- **Validator significantly loosened (25–26 Feb):** Rules 10, 13, 14 all relaxed or disabled to get paper trades flowing. Rule 13 (volume gate) fully disabled. Rule 14 (candle pattern) off by default. Review all thresholds before live trading.
 - **test_health.py excluded from CI:** Requires `aiohttp_jinja2` not in test deps.
 - **Multi-TF confirmation disabled:** `use_multi_tf_confirmation=False` by default. The logic is built but not battle-tested in production.
 
 ### Next Steps
-- Monitor paper trading performance across all three brokers
-- Review validator threshold relaxations — tighten if quality is poor
-- Consider dynamic USD→AUD rate fetch for accurate equity tracking
-- Evaluate signal quality and win rate from outcome tracker data
-- Test multi-TF confirmation mode (currently off)
-- Add `aiohttp_jinja2` to test deps so test_health.py runs in CI
+1. **Monitor logs for validated signals and PAPER FILL entries** — expect 10+ validated signals per cycle now
+2. Review trade quality once sample size builds (win rate, R:R achieved)
+3. If signal quality is poor, re-enable rules incrementally: `REQUIRE_CANDLE_PATTERN=true`, then `VOLUME_LOW_THRESHOLD=0.10`
+4. Consider dynamic USD→AUD rate fetch for accurate equity tracking
+5. Test multi-TF confirmation mode (currently off)
+6. Add `aiohttp_jinja2` to test deps so test_health.py runs in CI
 
 ### Critical Context
 - **Never modify `broker_interface.py`** — all brokers implement this contract

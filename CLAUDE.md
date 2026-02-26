@@ -10,7 +10,7 @@
 - **Database:** PostgreSQL (Fly Postgres)
 - **GitHub:** JPVT1977/trading-platform
 - **Trading Mode:** Paper (testnet) — all three brokers in sandbox/demo mode
-- **Last Updated:** 25 February 2026
+- **Last Updated:** 26 February 2026
 
 ---
 
@@ -132,21 +132,22 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | 7 | ADX trend strength (crypto only, >= threshold) |
 | 8 | Ranging market detection (Bollinger bandwidth) |
 | 9 | Minimum 2 confirming oscillators |
-| 10 | Swing length minimums (15 bars 4h, 10 bars 1h) |
-| 11 | RSI divergence magnitude >= 5.0 |
+| 10 | Swing length minimums (10 bars 4h, 7 bars 1h) |
+| 11 | RSI divergence magnitude >= 3.0 |
 | 12 | Zero/near-zero volume guard |
-| 13 | Low volume: current vol < 35% of SMA(20) |
-| 14 | Candlestick reversal pattern required in last 3 bars |
+| 13 | Low volume gate — **disabled** (threshold 0.0) |
+| 14 | Candlestick reversal pattern — **disabled** (require_candle_pattern=False) |
 
 ### Key Tuning Parameters (config.py)
 
 | Parameter | Current Value | Purpose |
 |-----------|--------------|---------|
-| `volume_low_threshold` | 0.10 (10%) | Rule 13 — was 0.50→0.35→0.10 relaxed 25 Feb 2026 |
+| `volume_low_threshold` | 0.0 (disabled) | Rule 13 — was 0.50→0.35→0.10→0.0 (disabled 26 Feb 2026) |
+| `require_candle_pattern` | False | Rule 14 — candle pattern toggle (disabled 26 Feb 2026) |
 | `min_divergence_score` | 5.0 | Minimum scoring threshold |
 | `min_confirming_indicators` | 2 | Rule 9 — oscillator confluence |
-| `min_swing_bars_4h` | 15 | Rule 10 — minimum 4h swing length |
-| `min_swing_bars_1h` | 10 | Rule 10 — minimum 1h swing length |
+| `min_swing_bars_4h` | 10 | Rule 10 — minimum 4h swing length (was 15, relaxed 26 Feb 2026) |
+| `min_swing_bars_1h` | 7 | Rule 10 — minimum 1h swing length (was 10, relaxed 26 Feb 2026) |
 | `min_divergence_magnitude_rsi` | 3.0 | Rule 11 — RSI magnitude floor (was 5.0, relaxed 25 Feb 2026) |
 | `min_risk_reward` | 1.5 | Rule 4 — R:R floor (was 2.0, relaxed 25 Feb 2026) |
 | `max_atr_multiple` | 7.0 | Rule 6 — ATR stop width ceiling (was 5.0, relaxed 25 Feb 2026) |

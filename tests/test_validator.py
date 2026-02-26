@@ -403,7 +403,28 @@ class TestRule9OscillatorStack:
 
 class TestRule10SwingLength:
     def test_rejects_short_swing_4h(self, settings):
-        """Reject 4h signals with swing length below 15 bars."""
+        """Reject 4h signals with swing length below 10 bars."""
+        indicators = _make_indicators()
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=7,
+            divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "Swing length" in result.reason
+
+    def test_accepts_adequate_swing_4h(self, settings):
+        """Accept 4h signals with swing length >= 10 bars."""
         indicators = _make_indicators()
         signal = DivergenceSignal(
             divergence_detected=True,
@@ -417,27 +438,6 @@ class TestRule10SwingLength:
             timeframe="4h",
             confirming_indicators=["RSI", "MACD"],
             swing_length_bars=10,
-            divergence_magnitude=8.5,
-        )
-        result = validate_signal(signal, indicators, settings)
-        assert not result.passed
-        assert "Swing length" in result.reason
-
-    def test_accepts_adequate_swing_4h(self, settings):
-        """Accept 4h signals with swing length >= 15 bars."""
-        indicators = _make_indicators()
-        signal = DivergenceSignal(
-            divergence_detected=True,
-            confidence=0.85,
-            reasoning="test",
-            direction=SignalDirection.LONG,
-            entry_price=42000,
-            stop_loss=41500,
-            take_profit_1=43000,
-            symbol="BTC/USDT",
-            timeframe="4h",
-            confirming_indicators=["RSI", "MACD"],
-            swing_length_bars=15,
             divergence_magnitude=8.5,
         )
         result = validate_signal(signal, indicators, settings)
@@ -534,8 +534,15 @@ class TestRule12ZeroVolume:
 
 
 class TestRule13LowVolume:
-    def test_rejects_low_volume(self, settings):
-        """Reject signals when current volume < 10% of SMA."""
+    def test_rejects_low_volume(self):
+        """Reject signals when current volume < threshold % of SMA."""
+        # Explicitly set threshold to 10% to test the rule logic
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            min_confidence=0.6,
+            min_risk_reward=1.5,
+            volume_low_threshold=0.10,
+        )
         vols = [1000.0] * 29 + [50.0]  # Last vol is 50, SMA is 1000 → 5%
         indicators = _make_indicators(volumes=vols, volume_sma=[1000.0] * 30)
         signal = DivergenceSignal(
@@ -552,13 +559,40 @@ class TestRule13LowVolume:
             swing_length_bars=18,
             divergence_magnitude=8.5,
         )
-        result = validate_signal(signal, indicators, settings)
+        result = validate_signal(signal, indicators, s)
         assert not result.passed
         assert "Low volume" in result.reason
 
-    def test_accepts_adequate_volume(self, settings):
-        """Accept signals when current volume >= 10% of SMA."""
+    def test_accepts_adequate_volume(self):
+        """Accept signals when current volume >= threshold % of SMA."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            min_confidence=0.6,
+            min_risk_reward=1.5,
+            volume_low_threshold=0.10,
+        )
         vols = [1000.0] * 29 + [600.0]  # 600/1000 = 60% > 10%
+        indicators = _make_indicators(volumes=vols, volume_sma=[1000.0] * 30)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18,
+            divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, s)
+        assert "Low volume" not in result.reason
+
+    def test_disabled_when_threshold_zero(self, settings):
+        """Rule 13 is effectively disabled when volume_low_threshold is 0.0 (default)."""
+        vols = [1000.0] * 29 + [1.0]  # Extremely low volume
         indicators = _make_indicators(volumes=vols, volume_sma=[1000.0] * 30)
         signal = DivergenceSignal(
             divergence_detected=True,
@@ -579,7 +613,17 @@ class TestRule13LowVolume:
 
 
 class TestRule14CandleGate:
-    def test_rejects_no_reversal_pattern(self, settings):
+    @pytest.fixture
+    def candle_gate_settings(self):
+        """Settings with require_candle_pattern enabled for testing Rule 14."""
+        return Settings(
+            trading_mode=TradingMode.DEV,
+            min_confidence=0.6,
+            min_risk_reward=1.5,
+            require_candle_pattern=True,
+        )
+
+    def test_rejects_no_reversal_pattern(self, candle_gate_settings):
         """Reject long signals when no bullish candlestick pattern found."""
         n = 30
         patterns = {
@@ -608,11 +652,11 @@ class TestRule14CandleGate:
             swing_length_bars=18,
             divergence_magnitude=8.5,
         )
-        result = validate_signal(signal, indicators, settings)
+        result = validate_signal(signal, indicators, candle_gate_settings)
         assert not result.passed
         assert "reversal candlestick" in result.reason
 
-    def test_accepts_hammer_pattern(self, settings):
+    def test_accepts_hammer_pattern(self, candle_gate_settings):
         """Accept long signals with hammer pattern in last 3 bars."""
         n = 30
         hammer_vals = [0] * (n - 2) + [100, 0]
@@ -642,10 +686,10 @@ class TestRule14CandleGate:
             swing_length_bars=18,
             divergence_magnitude=8.5,
         )
-        result = validate_signal(signal, indicators, settings)
+        result = validate_signal(signal, indicators, candle_gate_settings)
         assert "reversal candlestick" not in result.reason
 
-    def test_accepts_bearish_engulfing(self, settings):
+    def test_accepts_bearish_engulfing(self, candle_gate_settings):
         """Accept short signals with bearish engulfing (-100) in last 3 bars."""
         n = 30
         patterns = {
@@ -674,10 +718,10 @@ class TestRule14CandleGate:
             swing_length_bars=18,
             divergence_magnitude=8.5,
         )
-        result = validate_signal(signal, indicators, settings)
+        result = validate_signal(signal, indicators, candle_gate_settings)
         assert "reversal candlestick" not in result.reason
 
-    def test_accepts_shooting_star_for_short(self, settings):
+    def test_accepts_shooting_star_for_short(self, candle_gate_settings):
         """Accept short signals with shooting star (+100) in last 3 bars.
 
         TA-Lib single-direction bearish patterns return +100 (not -100).
@@ -709,12 +753,44 @@ class TestRule14CandleGate:
             swing_length_bars=18,
             divergence_magnitude=8.5,
         )
-        result = validate_signal(signal, indicators, settings)
+        result = validate_signal(signal, indicators, candle_gate_settings)
         assert "reversal candlestick" not in result.reason
 
-    def test_skips_when_empty_patterns(self, settings):
+    def test_skips_when_empty_patterns(self, candle_gate_settings):
         """Skip candle gate when candle_patterns is empty (backward compat)."""
         indicators = _make_indicators(candle_patterns={})
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18,
+            divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, candle_gate_settings)
+        assert "reversal candlestick" not in result.reason
+
+    def test_skips_when_toggle_disabled(self, settings):
+        """Rule 14 is skipped when require_candle_pattern is False (default)."""
+        n = 30
+        patterns = {
+            "hammer": [0] * n,
+            "engulfing": [0] * n,
+            "morning_star": [0] * n,
+            "piercing": [0] * n,
+            "inverted_hammer": [0] * n,
+            "shooting_star": [0] * n,
+            "evening_star": [0] * n,
+            "dark_cloud": [0] * n,
+            "hanging_man": [0] * n,
+        }
+        indicators = _make_indicators(candle_patterns=patterns)
         signal = DivergenceSignal(
             divergence_detected=True,
             confidence=0.85,

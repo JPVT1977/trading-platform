@@ -221,7 +221,12 @@ def validate_signal(
                 )
 
     # Rule 14: Candle gate — require reversal candlestick pattern
-    if indicators.candle_patterns and signal.direction is not None:
+    candle_gate_active = (
+        settings.require_candle_pattern
+        and indicators.candle_patterns
+        and signal.direction is not None
+    )
+    if candle_gate_active:
         lookback = settings.candle_gate_lookback
         bullish_patterns = ["hammer", "inverted_hammer", "piercing", "morning_star"]
         bearish_patterns = ["shooting_star", "hanging_man", "dark_cloud", "evening_star"]
