@@ -306,3 +306,66 @@ DO $$ BEGIN
     ALTER TABLE orders ADD COLUMN sl_trail_stage INTEGER DEFAULT 0;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+
+-- ===================================================================
+-- Exit Price: separate column so filled_price is not overwritten
+-- ===================================================================
+
+DO $$ BEGIN
+    ALTER TABLE orders ADD COLUMN exit_price DOUBLE PRECISION;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- One-time migration: for closed orders, filled_price was overwritten
+-- with the exit price by UPDATE_ORDER_CLOSE. Move it to exit_price
+-- and restore filled_price to entry_price (paper fill = entry).
+DO $$
+BEGIN
+    -- Only run if exit_price column is empty (first migration)
+    IF NOT EXISTS (
+        SELECT 1 FROM orders WHERE exit_price IS NOT NULL LIMIT 1
+    ) THEN
+        -- Step 1: Copy overwritten filled_price -> exit_price for closed orders
+        UPDATE orders SET exit_price = filled_price
+        WHERE state = 'closed' AND filled_price IS NOT NULL;
+
+        -- Step 2: Recalculate P&L for orders with pnl=0 or NULL
+        -- where we have valid exit data (exit_price != entry_price)
+        UPDATE orders
+        SET pnl = CASE
+                WHEN direction = 'long' THEN
+                    (exit_price - entry_price) * quantity
+                    - CASE WHEN broker = 'binance'
+                           THEN (entry_price * quantity + exit_price * quantity) * 0.001
+                           ELSE 0 END
+                WHEN direction = 'short' THEN
+                    (entry_price - exit_price) * quantity
+                    - CASE WHEN broker = 'binance'
+                           THEN (entry_price * quantity + exit_price * quantity) * 0.001
+                           ELSE 0 END
+            END,
+            fees = CASE WHEN broker = 'binance'
+                        THEN (entry_price * quantity + exit_price * quantity) * 0.001
+                        ELSE 0 END
+        WHERE state = 'closed'
+          AND exit_price IS NOT NULL
+          AND exit_price != entry_price
+          AND (pnl IS NULL OR pnl = 0);
+
+        -- Step 3: Restore filled_price to entry_price for closed paper orders
+        UPDATE orders SET filled_price = entry_price
+        WHERE state = 'closed' AND exit_price IS NOT NULL;
+
+        -- Step 4: Fix unfilled orders incorrectly set to 'closed'
+        UPDATE orders SET state = 'cancelled', pnl = NULL
+        WHERE state = 'closed'
+          AND filled_price IS NULL
+          AND exit_price IS NULL;
+
+        -- Step 5: Fix closed orders missing closed_at
+        UPDATE orders SET closed_at = updated_at
+        WHERE state = 'closed' AND closed_at IS NULL;
+
+        RAISE NOTICE 'exit_price migration completed';
+    END IF;
+END $$;

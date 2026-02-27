@@ -173,7 +173,7 @@ GET_OPEN_POSITIONS = """
 """
 
 GET_CLOSED_POSITIONS = """
-    SELECT o.id, o.symbol, o.direction, o.entry_price, o.filled_price,
+    SELECT o.id, o.symbol, o.direction, o.entry_price, o.exit_price,
            o.stop_loss, o.take_profit_1, o.quantity, o.pnl, o.fees,
            o.state, o.created_at, o.closed_at, o.broker,
            s.divergence_type, s.indicator, s.confidence, s.reasoning

@@ -118,7 +118,7 @@ class SMSClient:
             msg = (
                 f"TRADE CLOSED: {order.symbol} {direction}\n"
                 f"P&L: {pnl_prefix}{order.pnl:.2f} (fees: {fees_str})\n"
-                f"Entry: {order.entry_price} Exit: {order.filled_price}\n"
+                f"Entry: {order.entry_price} Exit: {order.exit_price}\n"
                 f"{result}"
             )
         else:

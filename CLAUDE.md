@@ -181,6 +181,7 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 8. **asyncpg** — Async Postgres driver, not psycopg2.
 9. **Composite broker pattern** — `IGStockBroker` transparently delegates data to Yahoo, orders to IG. Rest of codebase sees a normal `BrokerInterface`.
 10. **Per-broker risk isolation** — Each broker has independent position limits, correlation limits, and confidence thresholds.
+11. **Separate exit_price column** — `filled_price` stores the fill/entry price, `exit_price` stores the close price. `UPDATE_ORDER_CLOSE` writes to `exit_price`, never overwrites `filled_price`.
 
 ---
 

@@ -325,7 +325,7 @@ class ExecutionEngine:
                 stop_loss=stop_loss,
                 take_profit_1=take_profit_1,
                 quantity=quantity,
-                filled_price=exit_price,
+                exit_price=exit_price,
                 pnl=pnl_net,
                 fees=fees,
             )
@@ -393,7 +393,7 @@ class ExecutionEngine:
             stop_loss=float(row["stop_loss"]),
             take_profit_1=float(row["take_profit_1"]),
             quantity=quantity,
-            filled_price=exit_price,
+            exit_price=exit_price,
             pnl=pnl_net,
             fees=fees,
         )

@@ -3,7 +3,7 @@
 > Updated by Claude Code at the end of every session.
 > Read FIRST at the start of every new session.
 
-## Last Session — 26 February 2026
+## Last Session — 27 February 2026
 
 ### What Was Done (Full Project History — 63 commits, 22–25 Feb 2026)
 
@@ -72,6 +72,15 @@
 - Updated tests: 37 validator tests (147 total), added test_disabled_when_threshold_zero + test_skips_when_toggle_disabled
 - Set Fly.io secrets + deployed successfully. Health check OK.
 
+**Day 6 (27 Feb):** P&L bug fix — historical orders had pnl=0 despite real price movement.
+- **Root cause:** `UPDATE_ORDER_CLOSE` overwrote `filled_price` with exit price, AND early code (22 Feb) didn't calculate P&L on close. 30 of 40 closed orders had pnl=0 incorrectly.
+- **Fix:** Added `exit_price` column to orders table. `UPDATE_ORDER_CLOSE` now writes to `exit_price`, never overwrites `filled_price`. Clear separation: `filled_price` = fill/entry price, `exit_price` = close price.
+- **Data migration:** Idempotent SQL migration recalculated P&L for 19 historical orders using `(exit_price - entry_price) * quantity` with correct fee calculation (0.1% round-trip for Binance, 0 for OANDA/IG).
+- **Cleanup:** 4 unfilled orders reclassified from `closed` → `cancelled`. Closed orders with missing `closed_at` timestamps fixed.
+- **Result:** P&L went from 5 orders with data → 24 orders with data. Total realised P&L: -$563.78 (was showing only -$475.65 from 5 trades).
+- **Files changed:** schema.sql, queries.py, models.py, engine.py, telegram.py, sms.py, dashboard queries + template, CLAUDE.md
+- All 147 tests pass, lint clean. Deployed successfully.
+
 ### Decisions Made
 - **Composite broker pattern for IG stocks:** Yahoo Finance provides OHLCV data, IG handles orders. IG blocks historical data for stock CFDs (`unauthorised.access.to.equity.exception`).
 - **Only analyse closed candles:** Forming candles are skipped — saves ~95% Claude API cost. Only new candle close triggers analysis.
@@ -120,9 +129,9 @@
 - **Multi-TF confirmation disabled:** `use_multi_tf_confirmation=False` by default. The logic is built but not battle-tested in production.
 
 ### Next Steps
-1. **Monitor logs for validated signals and PAPER FILL entries** — expect 10+ validated signals per cycle now
-2. Review trade quality once sample size builds (win rate, R:R achieved)
-3. If signal quality is poor, re-enable rules incrementally: `REQUIRE_CANDLE_PATTERN=true`, then `VOLUME_LOW_THRESHOLD=0.10`
+1. **Investigate losses** — total realised P&L is -$563.78 across 24 closed trades. Signal quality needs review (SL hits outnumber TP1 hits 1.6:1)
+2. Review trade quality by broker: Binance -$83.52 (mostly small), OANDA -$462.29 (NATGAS -$142, WTICO -$133 + -$231), IG (1 open, no closes yet)
+3. Consider tightening validator rules back if loss pattern continues
 4. Consider dynamic USD→AUD rate fetch for accurate equity tracking
 5. Test multi-TF confirmation mode (currently off)
 6. Add `aiohttp_jinja2` to test deps so test_health.py runs in CI

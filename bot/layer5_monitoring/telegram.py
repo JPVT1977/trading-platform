@@ -78,7 +78,7 @@ class TelegramClient:
                 f"<b>Symbol:</b> {order.symbol}\n"
                 f"<b>Direction:</b> {direction}\n"
                 f"<b>Entry:</b> {order.entry_price}\n"
-                f"<b>Exit:</b> {order.filled_price or 'N/A'}\n"
+                f"<b>Exit:</b> {order.exit_price or 'N/A'}\n"
                 f"<b>P&L:</b> {pnl_prefix}{order.pnl:.2f}\n"
                 f"<b>Fees:</b> {order.fees:.2f}" if order.fees else ""
             )

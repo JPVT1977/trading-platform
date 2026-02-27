@@ -75,7 +75,7 @@ UPDATE_ORDER_FILL = """
 
 UPDATE_ORDER_CLOSE = """
     UPDATE orders
-    SET state = 'closed', pnl = $2, fees = $3, filled_price = $4,
+    SET state = 'closed', pnl = $2, fees = $3, exit_price = $4,
         closed_at = NOW(), updated_at = NOW()
     WHERE id = $1
 """

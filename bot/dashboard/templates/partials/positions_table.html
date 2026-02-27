@@ -120,7 +120,7 @@
                     <th>Trigger</th>
                     <th>Confidence</th>
                     <th>Entry</th>
-                    <th>Fill</th>
+                    <th>Exit</th>
                     <th>P&L</th>
                     <th>Fees</th>
                     <th>Duration</th>
@@ -145,7 +145,7 @@
                     <td class="text-sm">{{ p.divergence_type or '-' }} / {{ p.indicator or '-' }}</td>
                     <td class="mono">{{ "%.0f" | format(p.confidence * 100) if p.confidence else '-' }}%</td>
                     <td class="mono">{{ "%.2f" | format(p.entry_price) }}</td>
-                    <td class="mono">{{ "%.2f" | format(p.filled_price) if p.filled_price else '-' }}</td>
+                    <td class="mono">{{ "%.2f" | format(p.exit_price) if p.exit_price else '-' }}</td>
                     <td class="mono {{ 'text-success' if p.pnl and p.pnl >= 0 else 'text-danger' }}">
                         {{ "%.2f" | format(p.pnl) if p.pnl is not none else '-' }}
                     </td>
