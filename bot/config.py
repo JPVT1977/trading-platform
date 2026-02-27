@@ -66,8 +66,9 @@ class Settings(BaseSettings):
     max_daily_loss_pct: float = 5.0
     max_open_positions: int = 4
     max_correlation_exposure: int = 3
-    min_risk_reward: float = 1.5
+    min_risk_reward: float = 2.0
     min_confidence: float = 0.7
+    tp1_close_pct: float = 0.5  # Close 50% at TP1, trail remaining to TP2
     max_drawdown_pct: float = 15.0
 
     # --- Per-broker risk overrides (applied independently per broker) ---
@@ -100,7 +101,7 @@ class Settings(BaseSettings):
     ig_starting_equity: float = 10000.0
 
     # --- Phase 2: Multi-TF Confirmation ---
-    use_multi_tf_confirmation: bool = False  # 4h setup + 1h trigger
+    use_multi_tf_confirmation: bool = True  # 4h setup + 1h trigger
     setup_expiry_hours: int = 24  # How long a 4h setup stays valid
 
     @property

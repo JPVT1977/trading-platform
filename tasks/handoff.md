@@ -81,6 +81,18 @@
 - **Files changed:** schema.sql, queries.py, models.py, engine.py, telegram.py, sms.py, dashboard queries + template, CLAUDE.md
 - All 147 tests pass, lint clean. Deployed successfully.
 
+**Day 7 (27 Feb, session 2):** Partial profit-taking + multi-TF confirmation + R:R tightening.
+- **Partial TP system:** 50% closed at TP1, remaining 50% trails to TP2 with progressive stop tightening. New DB columns (`remaining_quantity`, `tp_stage`), new query (`UPDATE_ORDER_PARTIAL_CLOSE`), P&L accumulates across partials.
+- **Multi-TF confirmation enabled:** `use_multi_tf_confirmation=True`. 4h signals stored as setups, only trade when 1h confirms. Dramatically reduces trade volume (50/2hr → 2-5/day).
+- **R:R restored to 2.0:** `min_risk_reward` back from 1.5 to 2.0. With partial TP, effective R:R per trade ~2.5:1, breakeven win rate ~29%.
+- **Engine refactored:** `monitor_open_positions()` now handles 2-stage close flow. Stage 0 (full position → TP1 partial close, SL to breakeven). Stage 1 (remaining → trailing stop toward TP2, progressive SL tightening).
+- **Reversal close uses remaining_quantity:** `_close_position_for_reversal()` now uses `remaining_quantity` instead of original `quantity`.
+- **Risk manager uses remaining_quantity:** `PortfolioState.open_positions` populated with `remaining_quantity` for accurate position sizing.
+- **Partial close alerts:** New `send_partial_close_alert()` methods on both TelegramClient and SMSClient.
+- **12 new tests:** `test_engine.py` covering P&L calculation, partial TP stages, trailing stops, short positions, and tp1_close_pct=0 fallback.
+- **Files changed:** schema.sql, queries.py, config.py, models.py, engine.py, manager.py, telegram.py, sms.py, test_engine.py (new), test_config.py, CLAUDE.md
+- All 159 tests pass, lint clean.
+
 ### Decisions Made
 - **Composite broker pattern for IG stocks:** Yahoo Finance provides OHLCV data, IG handles orders. IG blocks historical data for stock CFDs (`unauthorised.access.to.equity.exception`).
 - **Only analyse closed candles:** Forming candles are skipped — saves ~95% Claude API cost. Only new candle close triggers analysis.
@@ -126,15 +138,16 @@
 - **Static USD→AUD rate:** `_USD_TO_AUD` in risk manager is hardcoded, not fetched live. Acceptable for paper trading, needs addressing before live.
 - **Validator significantly loosened (25–26 Feb):** Rules 10, 13, 14 all relaxed or disabled to get paper trades flowing. Rule 13 (volume gate) fully disabled. Rule 14 (candle pattern) off by default. Review all thresholds before live trading.
 - **test_health.py excluded from CI:** Requires `aiohttp_jinja2` not in test deps.
-- **Multi-TF confirmation disabled:** `use_multi_tf_confirmation=False` by default. The logic is built but not battle-tested in production.
+- **Multi-TF confirmation enabled (27 Feb):** `use_multi_tf_confirmation=True` by default. 4h setups + 1h triggers. Trade volume will drop significantly.
+- **Partial TP new (27 Feb):** 2-stage close flow not yet battle-tested in production. Monitor for edge cases (e.g. rapid price movement through both TP1 and TP2 in one monitor cycle).
 
 ### Next Steps
-1. **Investigate losses** — total realised P&L is -$563.78 across 24 closed trades. Signal quality needs review (SL hits outnumber TP1 hits 1.6:1)
-2. Review trade quality by broker: Binance -$83.52 (mostly small), OANDA -$462.29 (NATGAS -$142, WTICO -$133 + -$231), IG (1 open, no closes yet)
-3. Consider tightening validator rules back if loss pattern continues
+1. **Deploy partial TP + MTF changes** — set Fly.io secrets (`USE_MULTI_TF_CONFIRMATION=true`, `MIN_RISK_REWARD=2.0`, `TP1_CLOSE_PCT=0.5`) and deploy
+2. **Monitor new trade flow** — watch logs for "Multi-TF: 4h setup CREATED", "Multi-TF: CONFIRMED", "PARTIAL CLOSE TP1" messages
+3. **Verify accumulated P&L display** — check dashboard shows correct total P&L for partially-closed positions
 4. Consider dynamic USD→AUD rate fetch for accurate equity tracking
-5. Test multi-TF confirmation mode (currently off)
-6. Add `aiohttp_jinja2` to test deps so test_health.py runs in CI
+5. Add `aiohttp_jinja2` to test deps so test_health.py runs in CI
+6. Review trade quality after 48-72h with new parameters
 
 ### Critical Context
 - **Never modify `broker_interface.py`** — all brokers implement this contract

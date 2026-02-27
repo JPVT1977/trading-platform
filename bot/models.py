@@ -132,6 +132,8 @@ class TradeOrder(BaseModel):
     take_profit_2: float | None = None
     take_profit_3: float | None = None
     quantity: float = 0.0
+    remaining_quantity: float | None = None
+    tp_stage: int = 0
     filled_quantity: float = 0.0
     filled_price: float | None = None
     exit_price: float | None = None

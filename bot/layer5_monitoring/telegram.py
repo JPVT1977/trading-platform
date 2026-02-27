@@ -94,6 +94,26 @@ class TelegramClient:
             )
         await self.send(msg)
 
+    async def send_partial_close_alert(
+        self,
+        symbol: str, direction: str, exit_price: float,
+        closed_qty: float, remaining_qty: float,
+        pnl: float, fees: float, stage: str, next_target: float,
+    ) -> None:
+        """Send a partial close alert (e.g. TP1 hit, trailing remainder)."""
+        pnl_prefix = "+" if pnl >= 0 else ""
+        msg = (
+            f"<b>Partial Close — {stage}</b>\n\n"
+            f"<b>Symbol:</b> {symbol}\n"
+            f"<b>Direction:</b> {direction}\n"
+            f"<b>Exit Price:</b> {exit_price:.2f}\n"
+            f"<b>Closed:</b> {closed_qty:.6f}\n"
+            f"<b>Remaining:</b> {remaining_qty:.6f}\n"
+            f"<b>P&L (partial):</b> {pnl_prefix}{pnl:.2f}\n"
+            f"<b>Next Target:</b> {next_target:.2f}"
+        )
+        await self.send(msg)
+
     async def send_circuit_breaker_alert(self, reason: str) -> None:
         """Send a critical circuit breaker alert."""
         msg = (

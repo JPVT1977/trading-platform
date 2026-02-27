@@ -129,6 +129,22 @@ class SMSClient:
             )
         await self.send(msg)
 
+    async def send_partial_close_alert(
+        self,
+        symbol: str, direction: str, exit_price: float,
+        closed_qty: float, remaining_qty: float,
+        pnl: float, fees: float, stage: str, next_target: float,
+    ) -> None:
+        """Send a partial close alert via SMS."""
+        pnl_prefix = "+" if pnl >= 0 else ""
+        msg = (
+            f"PARTIAL {stage}: {symbol} {direction.upper()}\n"
+            f"Closed {closed_qty:.6f} @ {exit_price:.2f}\n"
+            f"P&L: {pnl_prefix}{pnl:.2f} | Remaining: {remaining_qty:.6f}\n"
+            f"Next target: {next_target:.2f}"
+        )
+        await self.send(msg)
+
     async def send_circuit_breaker_alert(self, reason: str) -> None:
         """Send a critical circuit breaker alert via SMS."""
         msg = f"CIRCUIT BREAKER TRIPPED\n{reason}\nAll trading halted."

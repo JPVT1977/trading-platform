@@ -55,9 +55,9 @@ INSERT_ORDER = """
         signal_id, exchange_order_id, symbol, direction,
         state, entry_price, stop_loss, take_profit_1,
         take_profit_2, take_profit_3, quantity, broker,
-        original_stop_loss, created_at
+        original_stop_loss, remaining_quantity, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $7, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $7, $11, NOW())
     RETURNING id
 """
 
@@ -75,8 +75,20 @@ UPDATE_ORDER_FILL = """
 
 UPDATE_ORDER_CLOSE = """
     UPDATE orders
-    SET state = 'closed', pnl = $2, fees = $3, exit_price = $4,
-        closed_at = NOW(), updated_at = NOW()
+    SET state = 'closed', pnl = COALESCE(pnl, 0) + $2,
+        fees = COALESCE(fees, 0) + $3, exit_price = $4,
+        remaining_quantity = 0, closed_at = NOW(), updated_at = NOW()
+    WHERE id = $1
+"""
+
+UPDATE_ORDER_PARTIAL_CLOSE = """
+    UPDATE orders
+    SET remaining_quantity = $2,
+        pnl = COALESCE(pnl, 0) + $3,
+        fees = COALESCE(fees, 0) + $4,
+        tp_stage = $5,
+        stop_loss = $6,
+        updated_at = NOW()
     WHERE id = $1
 """
 

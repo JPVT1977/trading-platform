@@ -176,13 +176,13 @@ class ExecutionEngine:
     async def monitor_open_positions(self) -> int:
         """Check all open positions against current market price.
 
-        For each open position:
-        - Fetch current price from the correct broker
-        - If price hit stop loss → close with loss
-        - If price hit TP1 → close with profit
-        - Also simulate fill: mark submitted orders as filled at entry price
+        2-stage close flow when tp1_close_pct > 0:
+          Stage 0 (tp_stage=0): Full position — check SL (close all) or TP1 (partial close)
+          Stage 1 (tp_stage=1): Remaining position — trailing stop toward TP2
 
-        Returns the number of positions closed this cycle.
+        When tp1_close_pct == 0, behaves as before (full close at TP1 or SL).
+
+        Returns the number of positions fully closed this cycle.
         """
         pool = self._db.pool
         rows = await pool.fetch(queries.SELECT_OPEN_ORDERS)
@@ -191,6 +191,7 @@ class ExecutionEngine:
             return 0
 
         closed_count = 0
+        partial_tp = self._settings.tp1_close_pct
 
         # Group by symbol to minimise ticker fetches
         symbols = set(r["symbol"] for r in rows)
@@ -211,7 +212,10 @@ class ExecutionEngine:
             entry_price = float(row["entry_price"])
             stop_loss = float(row["stop_loss"])
             take_profit_1 = float(row["take_profit_1"])
+            take_profit_2 = row.get("take_profit_2")
+            tp_stage = row.get("tp_stage") or 0
             quantity = float(row["quantity"])
+            remaining_qty = float(row.get("remaining_quantity") or quantity)
 
             current_price = tickers.get(symbol)
             if current_price is None:
@@ -228,112 +232,275 @@ class ExecutionEngine:
                 )
                 state = "filled"
 
-            # Step 1b: Breakeven / profit-lock trailing stop
-            original_sl = row["original_stop_loss"]
-            sl_trail_stage = row["sl_trail_stage"] or 0
-
-            if (
-                state == "filled"
-                and original_sl is not None
-                and sl_trail_stage < 2
-            ):
-                total_range = abs(take_profit_1 - entry_price)
-                if total_range > 0:
-                    if direction == "long":
-                        progress = (current_price - entry_price) / total_range
-                    else:
-                        progress = (entry_price - current_price) / total_range
-
-                    if progress >= 0.75 and sl_trail_stage < 2:
-                        if direction == "long":
-                            new_sl = entry_price + 0.25 * total_range
-                        else:
-                            new_sl = entry_price - 0.25 * total_range
-                        await pool.execute(
-                            queries.UPDATE_ORDER_STOP_LOSS,
-                            order_id, new_sl, 2,
-                        )
-                        stop_loss = new_sl
-                        logger.info(
-                            f"PROFIT LOCK: {symbol} SL moved to {new_sl:.5f}"
-                        )
-                    elif progress >= 0.50 and sl_trail_stage < 1:
-                        new_sl = entry_price
-                        await pool.execute(
-                            queries.UPDATE_ORDER_STOP_LOSS,
-                            order_id, new_sl, 1,
-                        )
-                        stop_loss = new_sl
-                        logger.info(
-                            f"BREAKEVEN: {symbol} SL moved to {new_sl:.5f}"
-                        )
-
-            # Step 2: Check SL/TP against current price
-            hit_sl = False
-            hit_tp = False
-
-            if direction == "long":
-                hit_sl = current_price <= stop_loss
-                hit_tp = current_price >= take_profit_1
-            elif direction == "short":
-                hit_sl = current_price >= stop_loss
-                hit_tp = current_price <= take_profit_1
-
-            if not hit_sl and not hit_tp:
+            if state != "filled":
                 continue
 
-            # Use actual market price as exit (more realistic than exact SL/TP level)
-            exit_price = current_price
-
-            # Calculate P&L
-            if direction == "long":
-                pnl = (exit_price - entry_price) * quantity
-            else:
-                pnl = (entry_price - exit_price) * quantity
-
-            # Spread-based instruments (OANDA, IG) = 0 fees; crypto = fee_rate round trip
             inst = get_instrument(symbol)
-            if inst.fee_rate == 0.0:
-                fees = 0.0
-            else:
-                fees = (entry_price * quantity + exit_price * quantity) * inst.fee_rate
 
-            pnl_net = pnl - fees
-            reason = "STOP LOSS" if hit_sl else "TAKE PROFIT"
+            # ==========================================================
+            # Stage 0: Full position — check SL or TP1
+            # ==========================================================
+            if tp_stage == 0:
+                # Pre-TP1 trailing stop (only when partial TP is disabled)
+                if partial_tp == 0:
+                    original_sl = row["original_stop_loss"]
+                    sl_trail_stage = row["sl_trail_stage"] or 0
+                    if original_sl is not None and sl_trail_stage < 2:
+                        total_range = abs(take_profit_1 - entry_price)
+                        if total_range > 0:
+                            if direction == "long":
+                                progress = (current_price - entry_price) / total_range
+                            else:
+                                progress = (entry_price - current_price) / total_range
 
-            # Close the order (now stores exit price)
-            await pool.execute(
-                queries.UPDATE_ORDER_CLOSE,
-                order_id, pnl_net, fees, exit_price,
-            )
+                            if progress >= 0.75 and sl_trail_stage < 2:
+                                new_sl = (
+                                    entry_price + 0.25 * total_range if direction == "long"
+                                    else entry_price - 0.25 * total_range
+                                )
+                                await pool.execute(
+                                    queries.UPDATE_ORDER_STOP_LOSS,
+                                    order_id, new_sl, 2,
+                                )
+                                stop_loss = new_sl
+                                logger.info(f"PROFIT LOCK: {symbol} SL moved to {new_sl:.5f}")
+                            elif progress >= 0.50 and sl_trail_stage < 1:
+                                new_sl = entry_price
+                                await pool.execute(
+                                    queries.UPDATE_ORDER_STOP_LOSS,
+                                    order_id, new_sl, 1,
+                                )
+                                stop_loss = new_sl
+                                logger.info(f"BREAKEVEN: {symbol} SL moved to {new_sl:.5f}")
 
-            closed_count += 1
-            pnl_emoji = "+" if pnl_net >= 0 else ""
-            logger.info(
-                f"PAPER CLOSE: {symbol} {direction} | {reason} @ {exit_price:.2f} | "
-                f"P&L: {pnl_emoji}{pnl_net:.2f} (fees: {fees:.2f}) | "
-                f"Price now: {current_price:.2f}"
-            )
+                # Check SL
+                hit_sl = (
+                    (current_price <= stop_loss) if direction == "long"
+                    else (current_price >= stop_loss)
+                )
 
-            # Send alert (Telegram + SMS)
-            closed_order = TradeOrder(
-                id=str(order_id),
-                symbol=symbol,
-                direction=direction,
-                state=OrderState.CLOSED,
-                entry_price=entry_price,
-                stop_loss=stop_loss,
-                take_profit_1=take_profit_1,
-                quantity=quantity,
-                exit_price=exit_price,
-                pnl=pnl_net,
-                fees=fees,
-            )
-            await self._telegram.send_order_alert(closed_order)
-            if self._sms:
-                await self._sms.send_order_alert(closed_order)
+                if hit_sl:
+                    # Close ALL remaining at SL
+                    pnl, fees = self._calc_pnl(
+                        direction, entry_price, current_price, remaining_qty, inst,
+                    )
+                    await pool.execute(
+                        queries.UPDATE_ORDER_CLOSE,
+                        order_id, pnl, fees, current_price,
+                    )
+                    closed_count += 1
+                    self._log_close(symbol, direction, "STOP LOSS", current_price, pnl, fees)
+                    await self._send_close_alert(
+                        order_id, symbol, direction, entry_price, stop_loss,
+                        take_profit_1, remaining_qty, current_price, pnl, fees,
+                    )
+                    continue
+
+                # Check TP1
+                hit_tp1 = (
+                    (current_price >= take_profit_1) if direction == "long"
+                    else (current_price <= take_profit_1)
+                )
+
+                if hit_tp1:
+                    if partial_tp > 0 and take_profit_2 is not None:
+                        # Partial close at TP1
+                        close_qty = remaining_qty * partial_tp
+                        new_remaining = remaining_qty - close_qty
+                        pnl, fees = self._calc_pnl(
+                            direction, entry_price, current_price, close_qty, inst,
+                        )
+                        # Move SL to entry (breakeven) immediately
+                        new_sl = entry_price
+                        await pool.execute(
+                            queries.UPDATE_ORDER_PARTIAL_CLOSE,
+                            order_id, new_remaining, pnl, fees, 1, new_sl,
+                        )
+                        pnl_prefix = "+" if pnl >= 0 else ""
+                        logger.info(
+                            f"PARTIAL CLOSE TP1: {symbol} {direction} | "
+                            f"Closed {close_qty:.6f}/{remaining_qty:.6f} @ {current_price:.2f} | "
+                            f"P&L: {pnl_prefix}{pnl:.2f} (fees: {fees:.2f}) | "
+                            f"Remaining: {new_remaining:.6f} trailing to TP2"
+                        )
+                        await self._telegram.send_partial_close_alert(
+                            symbol, direction, current_price, close_qty,
+                            new_remaining, pnl, fees, "TP1",
+                            float(take_profit_2),
+                        )
+                        if self._sms:
+                            await self._sms.send_partial_close_alert(
+                                symbol, direction, current_price, close_qty,
+                                new_remaining, pnl, fees, "TP1",
+                                float(take_profit_2),
+                            )
+                    else:
+                        # Full close at TP1 (no partial TP or no TP2)
+                        pnl, fees = self._calc_pnl(
+                            direction, entry_price, current_price, remaining_qty, inst,
+                        )
+                        await pool.execute(
+                            queries.UPDATE_ORDER_CLOSE,
+                            order_id, pnl, fees, current_price,
+                        )
+                        closed_count += 1
+                        self._log_close(symbol, direction, "TAKE PROFIT", current_price, pnl, fees)
+                        await self._send_close_alert(
+                            order_id, symbol, direction, entry_price, stop_loss,
+                            take_profit_1, remaining_qty, current_price, pnl, fees,
+                        )
+
+            # ==========================================================
+            # Stage 1: Remaining position trailing to TP2
+            # ==========================================================
+            elif tp_stage == 1 and take_profit_2 is not None:
+                tp2 = float(take_profit_2)
+
+                # Trailing stop: progress toward TP2 (measured from entry, not TP1)
+                tp2_range = abs(tp2 - entry_price)
+                if tp2_range > 0:
+                    if direction == "long":
+                        progress_to_tp2 = (current_price - entry_price) / tp2_range
+                    else:
+                        progress_to_tp2 = (entry_price - current_price) / tp2_range
+
+                    tp1_level = take_profit_1
+                    tp1_to_tp2 = abs(tp2 - tp1_level)
+
+                    if progress_to_tp2 >= 0.75 and tp1_to_tp2 > 0:
+                        # SL to TP1 + 25% of (TP2 - TP1) range
+                        if direction == "long":
+                            new_sl = tp1_level + 0.25 * tp1_to_tp2
+                        else:
+                            new_sl = tp1_level - 0.25 * tp1_to_tp2
+                        if (direction == "long" and new_sl > stop_loss) or \
+                           (direction == "short" and new_sl < stop_loss):
+                            await pool.execute(
+                                queries.UPDATE_ORDER_STOP_LOSS,
+                                order_id, new_sl, 2,
+                            )
+                            stop_loss = new_sl
+                            logger.info(
+                                f"TP2 TRAIL: {symbol} SL moved to {new_sl:.5f} "
+                                f"(75% progress to TP2)"
+                            )
+                    elif progress_to_tp2 >= 0.50:
+                        # SL to TP1 level
+                        if direction == "long":
+                            new_sl = tp1_level
+                        else:
+                            new_sl = tp1_level
+                        if (direction == "long" and new_sl > stop_loss) or \
+                           (direction == "short" and new_sl < stop_loss):
+                            await pool.execute(
+                                queries.UPDATE_ORDER_STOP_LOSS,
+                                order_id, new_sl, 2,
+                            )
+                            stop_loss = new_sl
+                            logger.info(
+                                f"TP2 TRAIL: {symbol} SL moved to {new_sl:.5f} "
+                                f"(50% progress to TP2, at TP1 level)"
+                            )
+
+                # Check SL on remaining
+                hit_sl = (
+                    (current_price <= stop_loss) if direction == "long"
+                    else (current_price >= stop_loss)
+                )
+
+                if hit_sl:
+                    pnl, fees = self._calc_pnl(
+                        direction, entry_price, current_price, remaining_qty, inst,
+                    )
+                    await pool.execute(
+                        queries.UPDATE_ORDER_CLOSE,
+                        order_id, pnl, fees, current_price,
+                    )
+                    closed_count += 1
+                    self._log_close(
+                        symbol, direction, "STOP LOSS (post-TP1)",
+                        current_price, pnl, fees,
+                    )
+                    await self._send_close_alert(
+                        order_id, symbol, direction, entry_price, stop_loss,
+                        take_profit_1, remaining_qty, current_price, pnl, fees,
+                    )
+                    continue
+
+                # Check TP2
+                hit_tp2 = (
+                    (current_price >= tp2) if direction == "long"
+                    else (current_price <= tp2)
+                )
+
+                if hit_tp2:
+                    pnl, fees = self._calc_pnl(
+                        direction, entry_price, current_price, remaining_qty, inst,
+                    )
+                    await pool.execute(
+                        queries.UPDATE_ORDER_CLOSE,
+                        order_id, pnl, fees, current_price,
+                    )
+                    closed_count += 1
+                    self._log_close(symbol, direction, "TAKE PROFIT 2", current_price, pnl, fees)
+                    await self._send_close_alert(
+                        order_id, symbol, direction, entry_price, stop_loss,
+                        take_profit_1, remaining_qty, current_price, pnl, fees,
+                    )
 
         return closed_count
+
+    @staticmethod
+    def _calc_pnl(
+        direction: str, entry_price: float, exit_price: float,
+        quantity: float, inst,
+    ) -> tuple[float, float]:
+        """Calculate net P&L and fees for a given quantity."""
+        if direction == "long":
+            pnl = (exit_price - entry_price) * quantity
+        else:
+            pnl = (entry_price - exit_price) * quantity
+
+        if inst.fee_rate == 0.0:
+            fees = 0.0
+        else:
+            fees = (entry_price * quantity + exit_price * quantity) * inst.fee_rate
+
+        return pnl - fees, fees
+
+    @staticmethod
+    def _log_close(
+        symbol: str, direction: str, reason: str,
+        exit_price: float, pnl: float, fees: float,
+    ) -> None:
+        pnl_prefix = "+" if pnl >= 0 else ""
+        logger.info(
+            f"PAPER CLOSE: {symbol} {direction} | {reason} @ {exit_price:.2f} | "
+            f"P&L: {pnl_prefix}{pnl:.2f} (fees: {fees:.2f})"
+        )
+
+    async def _send_close_alert(
+        self,
+        order_id, symbol: str, direction: str, entry_price: float,
+        stop_loss: float, take_profit_1: float, quantity: float,
+        exit_price: float, pnl: float, fees: float,
+    ) -> None:
+        closed_order = TradeOrder(
+            id=str(order_id),
+            symbol=symbol,
+            direction=direction,
+            state=OrderState.CLOSED,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit_1=take_profit_1,
+            quantity=quantity,
+            exit_price=exit_price,
+            pnl=pnl,
+            fees=fees,
+        )
+        await self._telegram.send_order_alert(closed_order)
+        if self._sms:
+            await self._sms.send_order_alert(closed_order)
 
     async def _close_position_for_reversal(self, order_id: str, symbol: str) -> None:
         """Close an existing position to allow a reversal trade."""
@@ -346,7 +513,7 @@ class ExecutionEngine:
             return
 
         entry_price = float(row["entry_price"])
-        quantity = float(row["quantity"])
+        quantity = float(row.get("remaining_quantity") or row["quantity"])
         direction = row["direction"]
 
         # Get current market price for P&L calculation via correct broker

@@ -69,7 +69,7 @@ bot/dashboard/                      Web Dashboard
   setup_users.py                    Dashboard user seeding
   static/, templates/               Frontend assets
 
-tests/                              pytest-asyncio test suite (142 tests)
+tests/                              pytest-asyncio test suite (159 tests)
 tasks/                              Session management (handoff, lessons, todo)
 ```
 
@@ -111,7 +111,7 @@ APScheduler triggers `analysis_cycle()` every 5 minutes:
 
 ### Scheduled Jobs
 - **Analysis cycle:** every 5 minutes (divergence detection)
-- **Position monitor:** every 2 minutes (SL/TP checks, fixed stop-loss + 3-tier TP)
+- **Position monitor:** every 2 minutes (SL/TP checks, 2-stage partial TP: 50% at TP1, trail 50% to TP2)
 - **Outcome tracker:** every 5 minutes (fills checkpoint prices, TP/SL hit verdicts)
 
 ---
@@ -149,7 +149,9 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | `min_swing_bars_4h` | 10 | Rule 10 — minimum 4h swing length (was 15, relaxed 26 Feb 2026) |
 | `min_swing_bars_1h` | 7 | Rule 10 — minimum 1h swing length (was 10, relaxed 26 Feb 2026) |
 | `min_divergence_magnitude_rsi` | 3.0 | Rule 11 — RSI magnitude floor (was 5.0, relaxed 25 Feb 2026) |
-| `min_risk_reward` | 1.5 | Rule 4 — R:R floor (was 2.0, relaxed 25 Feb 2026) |
+| `min_risk_reward` | 2.0 | Rule 4 — R:R floor (restored from 1.5, 27 Feb 2026) |
+| `tp1_close_pct` | 0.5 | Partial TP — close 50% at TP1, trail 50% to TP2 (added 27 Feb 2026) |
+| `use_multi_tf_confirmation` | True | Multi-TF — 4h setup + 1h trigger (enabled 27 Feb 2026) |
 | `max_atr_multiple` | 7.0 | Rule 6 — ATR stop width ceiling (was 5.0, relaxed 25 Feb 2026) |
 | `max_drawdown_pct` | 15.0 | Drawdown kill switch threshold |
 
@@ -182,6 +184,8 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 9. **Composite broker pattern** — `IGStockBroker` transparently delegates data to Yahoo, orders to IG. Rest of codebase sees a normal `BrokerInterface`.
 10. **Per-broker risk isolation** — Each broker has independent position limits, correlation limits, and confidence thresholds.
 11. **Separate exit_price column** — `filled_price` stores the fill/entry price, `exit_price` stores the close price. `UPDATE_ORDER_CLOSE` writes to `exit_price`, never overwrites `filled_price`.
+12. **Partial profit-taking** — 50% closed at TP1 (configurable via `tp1_close_pct`), remaining 50% trails to TP2 with progressive stop tightening. P&L accumulates across partial closes via `COALESCE(pnl, 0) + new_pnl`.
+13. **Multi-TF confirmation** — 4h signals stored as setups (24h expiry), 1h signals only execute if matching 4h setup exists. Dramatically reduces trade volume but increases quality.
 
 ---
 

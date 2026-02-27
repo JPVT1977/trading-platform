@@ -280,6 +280,24 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- ===================================================================
+-- Partial Profit-Taking: remaining quantity + TP stage (idempotent)
+-- ===================================================================
+
+DO $$ BEGIN
+    ALTER TABLE orders ADD COLUMN remaining_quantity DOUBLE PRECISION;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE orders ADD COLUMN tp_stage INTEGER DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- Backfill: set remaining_quantity = quantity for existing open orders
+UPDATE orders SET remaining_quantity = quantity
+WHERE remaining_quantity IS NULL AND state NOT IN ('closed', 'cancelled', 'rejected');
+
+-- ===================================================================
 -- Signal Quality Engine: divergence score columns (idempotent)
 -- ===================================================================
 
