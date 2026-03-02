@@ -10,7 +10,7 @@ import jinja2
 from aiohttp import web
 from loguru import logger
 
-from bot.dashboard.middleware import auth_middleware
+from bot.dashboard.middleware import auth_middleware, security_headers_middleware
 from bot.dashboard.routes import setup_routes
 from bot.dashboard.setup_users import seed_dashboard_users
 
@@ -48,8 +48,10 @@ class HealthServer:
         self._router = router
         self._risk_manager = risk_manager
 
-        # Create app with auth middleware
-        self._app = web.Application(middlewares=[auth_middleware])
+        # Create app with security + auth middleware (security headers first)
+        self._app = web.Application(
+            middlewares=[security_headers_middleware, auth_middleware]
+        )
 
         # Store db_pool on app for middleware/views to access
         self._app["db_pool"] = None  # Set after connect
@@ -79,8 +81,9 @@ class HealthServer:
         self._runner: web.AppRunner | None = None
 
     async def _global_context(self, request: web.Request) -> dict:
-        """Jinja2 context processor — injects `now` into all templates."""
-        return {"now": datetime.now(MELB_TZ)}
+        """Jinja2 context processor — injects `now` and `csrf_token` into all templates."""
+        csrf_token = request.cookies.get("csrf_token", "")
+        return {"now": datetime.now(MELB_TZ), "csrf_token": csrf_token}
 
     async def _health_check(self, request: web.Request) -> web.Response:
         """Shallow health check — is the process alive?"""
@@ -99,7 +102,8 @@ class HealthServer:
                 await conn.fetchval("SELECT 1")
             checks["database"] = "ok"
         except Exception as e:
-            checks["database"] = f"error: {e}"
+            logger.warning(f"Deep health check — database failed: {e}")
+            checks["database"] = "check_failed"
 
         # Check each registered broker
         if self._router:
@@ -108,7 +112,8 @@ class HealthServer:
                     await broker.check_connectivity()
                     checks[f"broker_{broker.broker_id}"] = "ok"
                 except Exception as e:
-                    checks[f"broker_{broker.broker_id}"] = f"error: {e}"
+                    logger.warning(f"Deep health check — broker {broker.broker_id} failed: {e}")
+                    checks[f"broker_{broker.broker_id}"] = "check_failed"
 
         all_ok = all(v == "ok" for v in checks.values())
         status_code = 200 if all_ok else 503

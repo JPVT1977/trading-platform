@@ -70,8 +70,10 @@ class Settings(BaseSettings):
     min_confidence: float = 0.7
     tp1_close_pct: float = 0.5  # Close 50% at TP1, trail remaining to TP2
     max_drawdown_pct: float = 15.0
+    max_directional_pct: float = 70.0  # Max % of positions in one direction
 
-    # --- Per-broker risk overrides (applied independently per broker) ---
+    # --- Binance crypto broker ---
+    binance_starting_equity: float = 7600.0
     binance_max_open_positions: int = 2
     binance_max_correlation_exposure: int = 3
     binance_min_confidence: float = 0.7
@@ -131,6 +133,15 @@ class Settings(BaseSettings):
     ema_short: int = 20
     ema_medium: int = 50
     ema_long: int = 200
+
+    # --- Minimum stop distance (ATR multiples) per asset class ---
+    # Claude often sets stops too tight for volatile instruments.
+    # These floors ensure stops are outside normal noise.
+    min_atr_stop_crypto: float = 1.5   # Crypto: min 1.5x ATR (was allowing 0.5x)
+    min_atr_stop_stock: float = 1.0    # Stocks: min 1.0x ATR
+    min_atr_stop_commodity: float = 1.0  # Commodities: min 1.0x ATR
+    min_atr_stop_forex: float = 0.5    # Forex: keep 0.5x (tighter is OK)
+    min_atr_stop_index: float = 0.5    # Indices: keep 0.5x
 
     # --- Signal Quality Engine ---
     min_divergence_score: float = 5.0

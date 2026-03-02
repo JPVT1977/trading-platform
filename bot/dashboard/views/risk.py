@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import aiohttp_jinja2
 from aiohttp import web
+from loguru import logger
 
 from bot.dashboard import queries as dq
 
@@ -113,6 +114,12 @@ class RiskViews:
         """POST /api/risk/reset-breaker — manually reset circuit breaker."""
         if not self._risk_manager:
             return web.Response(text="Risk manager not available", status=500)
+
+        ip = request.remote or "unknown"
+        user = request.get("user", {})
+        logger.info(
+            f"SECURITY: Circuit breaker reset by {user.get('email', 'unknown')} from {ip}"
+        )
 
         self._risk_manager.reset_circuit_breaker()
         self._risk_manager.reset_drawdown_breaker()

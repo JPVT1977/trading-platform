@@ -13,10 +13,11 @@ from bot.models import (
     OrderState,
     PortfolioState,
     RiskCheckResult,
+    SignalDirection,
     TradeOrder,
 )
 
-STARTING_EQUITY = 5000.0
+STARTING_EQUITY = 7600.0  # Legacy default — prefer settings.binance_starting_equity
 
 # Approximate quote-currency-to-USD rates for position sizing.
 # Used when the instrument's quote currency is not USD.
@@ -130,7 +131,18 @@ class RiskManager:
         for p in portfolio.open_positions:
             if p.state in active_states and p.symbol == signal.symbol:
                 if signal.direction is not None and p.direction != signal.direction:
-                    # Opposite direction = reversal signal → approve with REVERSAL flag
+                    # Opposite direction = reversal signal
+                    # Protect winning trades: only reverse if position is at a loss
+                    unrealised = self._estimate_unrealised_pnl(p)
+                    if unrealised is not None and unrealised > 0:
+                        return RiskCheckResult(
+                            approved=False,
+                            reason=(
+                                f"Reversal blocked: {signal.symbol} position is "
+                                f"in profit (+${unrealised:.2f}) — "
+                                f"let partial TP system manage exit"
+                            ),
+                        )
                     return RiskCheckResult(
                         approved=True,
                         reason=f"REVERSAL:{p.id}",
@@ -187,7 +199,42 @@ class RiskManager:
                     ),
                 )
 
-        # Check 6: Portfolio leverage cap — reject if aggregate notional/equity >= 10x
+        # Check 6: Directional exposure cap — max % of positions in one direction
+        if signal.direction is not None and len(portfolio.open_positions) >= 3:
+            long_count = sum(
+                1 for p in portfolio.open_positions
+                if p.state in active_states and p.direction == SignalDirection.LONG
+            )
+            short_count = sum(
+                1 for p in portfolio.open_positions
+                if p.state in active_states and p.direction == SignalDirection.SHORT
+            )
+            total_active = long_count + short_count
+            if total_active > 0:
+                if signal.direction == SignalDirection.LONG:
+                    new_long_pct = (long_count + 1) / (total_active + 1) * 100
+                    if new_long_pct > self._settings.max_directional_pct:
+                        return RiskCheckResult(
+                            approved=False,
+                            reason=(
+                                f"Directional cap: {long_count} long / {total_active} total "
+                                f"({new_long_pct:.0f}% would exceed "
+                                f"{self._settings.max_directional_pct:.0f}% limit)"
+                            ),
+                        )
+                else:
+                    new_short_pct = (short_count + 1) / (total_active + 1) * 100
+                    if new_short_pct > self._settings.max_directional_pct:
+                        return RiskCheckResult(
+                            approved=False,
+                            reason=(
+                                f"Directional cap: {short_count} short / {total_active} total "
+                                f"({new_short_pct:.0f}% would exceed "
+                                f"{self._settings.max_directional_pct:.0f}% limit)"
+                            ),
+                        )
+
+        # Check 7: Portfolio leverage cap — reject if aggregate notional/equity >= 10x
         total_notional_aud = 0.0
         for p in portfolio.open_positions:
             if p.state not in active_states:
@@ -219,6 +266,25 @@ class RiskManager:
                 )
 
         return RiskCheckResult(approved=True, reason="All risk checks passed")
+
+    @staticmethod
+    def _estimate_unrealised_pnl(order: TradeOrder) -> float | None:
+        """Estimate unrealised P&L from entry price vs filled price.
+
+        Returns None if we can't estimate (e.g. no filled price).
+        For paper trades, filled_price == entry_price, so we can't know
+        unrealised P&L without a live ticker. Instead, check if the order
+        has accumulated any partial P&L (tp_stage > 0 means TP1 was hit).
+        """
+        # If partial TP already triggered, position is definitely in profit
+        if order.tp_stage and order.tp_stage > 0:
+            return 1.0  # Positive sentinel — exact amount unknown
+
+        # If there's already accumulated P&L from partial closes, use that
+        if order.pnl is not None and order.pnl > 0:
+            return order.pnl
+
+        return None
 
     def calculate_position_size(
         self, signal: DivergenceSignal, portfolio: PortfolioState
@@ -314,6 +380,17 @@ class RiskManager:
         max_units = (portfolio.total_equity * instrument.max_leverage) / entry_aud
         units = min(units, max_units)
 
+        # Additional cap: max notional at 50% of equity (same principle as crypto)
+        # This prevents absurdly large positions even when risk math says it's OK
+        max_notional_aud = portfolio.total_equity * 0.50
+        max_notional_units = max_notional_aud / entry_aud if entry_aud > 0 else 0
+        if units > max_notional_units:
+            logger.info(
+                f"OANDA notional cap: {units:.0f} → {max_notional_units:.0f} units "
+                f"(50% equity = A${max_notional_aud:.0f})"
+            )
+            units = max_notional_units
+
         # Round to whole units (OANDA accepts fractional but whole is cleaner)
         units = int(units)
 
@@ -349,7 +426,7 @@ class RiskManager:
         elif broker_id == "ig":
             starting_eq = self._settings.ig_starting_equity
         else:
-            starting_eq = STARTING_EQUITY
+            starting_eq = self._settings.binance_starting_equity
 
         # Get cumulative realized P&L for this broker
         cumulative_pnl = float(

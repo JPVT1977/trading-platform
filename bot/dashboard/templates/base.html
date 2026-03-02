@@ -8,6 +8,13 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+    <script>
+        // Send CSRF token on every HTMX request via header
+        document.addEventListener('htmx:configRequest', function(event) {
+            var csrf = document.cookie.split('; ').find(function(c) { return c.startsWith('csrf_token='); });
+            if (csrf) { event.detail.headers['X-CSRF-Token'] = csrf.split('=')[1]; }
+        });
+    </script>
     {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -74,6 +81,7 @@
                         <div class="user-email">{{ user.email }}</div>
                     </div>
                     <form method="POST" action="/logout" style="margin:0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="btn-logout">Logout</button>
                     </form>
                 </div>

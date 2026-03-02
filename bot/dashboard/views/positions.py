@@ -98,7 +98,7 @@ class PositionsViews:
         """GET /dashboard/positions — full positions page."""
         tab = request.query.get("tab", "open")
         try:
-            page = max(1, int(request.query.get("page", "1")))
+            page = min(max(1, int(request.query.get("page", "1"))), 10000)
         except (ValueError, TypeError):
             page = 1
         offset = (page - 1) * PAGE_SIZE
@@ -127,7 +127,7 @@ class PositionsViews:
         """GET /api/positions — HTMX partial for table refresh."""
         tab = request.query.get("tab", "open")
         try:
-            page = max(1, int(request.query.get("page", "1")))
+            page = min(max(1, int(request.query.get("page", "1"))), 10000)
         except (ValueError, TypeError):
             page = 1
         offset = (page - 1) * PAGE_SIZE

@@ -9,8 +9,10 @@ from datetime import UTC, datetime, timedelta
 import aiohttp_jinja2
 import bcrypt
 from aiohttp import web
+from loguru import logger
 
 from bot.dashboard import queries as dq
+from bot.dashboard.middleware import generate_csrf_token
 
 
 class AuthViews:
@@ -36,6 +38,7 @@ class AuthViews:
         data = await request.post()
         email = str(data.get("email", "")).strip().lower()
         password = str(data.get("password", ""))
+        ip_address = request.remote or "unknown"
 
         if not email or not password:
             return aiohttp_jinja2.render_template(
@@ -45,20 +48,23 @@ class AuthViews:
         # Look up user
         user = await self._pool.fetchrow(dq.GET_USER_BY_EMAIL, email)
         if not user:
+            logger.warning(f"SECURITY: Failed login — unknown email '{email}' from {ip_address}")
             return aiohttp_jinja2.render_template(
                 "login.html", request, {"error": "Invalid email or password"}
             )
 
         # Verify password
         if not bcrypt.checkpw(password.encode("utf-8"), user["password_hash"].encode("utf-8")):
+            logger.warning(
+                f"SECURITY: Failed login — wrong password for '{email}' from {ip_address}"
+            )
             return aiohttp_jinja2.render_template(
                 "login.html", request, {"error": "Invalid email or password"}
             )
 
-        # Create session
+        # Create session (4-hour lifetime)
         session_id = secrets.token_hex(32)
-        expires_at = datetime.now(UTC) + timedelta(hours=24)
-        ip_address = request.remote or "unknown"
+        expires_at = datetime.now(UTC) + timedelta(hours=4)
 
         await self._pool.execute(
             dq.CREATE_SESSION,
@@ -66,16 +72,19 @@ class AuthViews:
         )
         await self._pool.execute(dq.UPDATE_LAST_LOGIN, user["id"])
 
-        # Set cookie and redirect
+        logger.info(f"SECURITY: Successful login for '{email}' from {ip_address}")
+
+        # Set session cookie and CSRF cookie, then redirect
         response = web.HTTPFound("/dashboard")
         response.set_cookie(
             "session_id",
             session_id,
-            max_age=86400,  # 24 hours
+            max_age=14400,  # 4 hours
             httponly=True,
             secure=True,
             samesite="Strict",
         )
+        generate_csrf_token(response)
         raise response
 
     async def logout(self, request: web.Request) -> web.Response:
@@ -111,6 +120,7 @@ class AuthViews:
         reset_code = str(data.get("reset_code", ""))
         new_password = str(data.get("new_password", ""))
         confirm_password = str(data.get("confirm_password", ""))
+        ip_address = request.remote or "unknown"
 
         ctx: dict = {"disabled": False}
 
@@ -125,6 +135,9 @@ class AuthViews:
             return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
 
         if not secrets.compare_digest(reset_code, expected_code):
+            logger.warning(
+                f"SECURITY: Failed password reset — invalid code for '{email}' from {ip_address}"
+            )
             ctx["error"] = "Invalid reset code"
             return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
 
@@ -146,6 +159,7 @@ class AuthViews:
         ).decode("utf-8")
         await self._pool.execute(dq.UPDATE_USER_PASSWORD, new_hash, user["id"])
 
+        logger.info(f"SECURITY: Password reset for '{email}' from {ip_address}")
         ctx["success"] = "Password reset successfully. You can now log in."
         return aiohttp_jinja2.render_template("reset_password.html", request, ctx)
 
@@ -198,6 +212,9 @@ class AuthViews:
             new_password.encode("utf-8"), bcrypt.gensalt(rounds=12)
         ).decode("utf-8")
         await self._pool.execute(dq.UPDATE_USER_PASSWORD, new_hash, db_user["id"])
+
+        ip_address = request.remote or "unknown"
+        logger.info(f"SECURITY: Password changed for '{user['email']}' from {ip_address}")
 
         ctx["success"] = "Password changed successfully"
         return aiohttp_jinja2.render_template("change_password.html", request, ctx)

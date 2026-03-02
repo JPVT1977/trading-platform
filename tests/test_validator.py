@@ -241,6 +241,49 @@ class TestRule6ATRStopDistance:
         assert "too wide" in result.reason
 
 
+class TestRule6AssetClassATR:
+    """Test per-asset-class minimum ATR stop distances."""
+
+    def test_crypto_rejects_tight_stop_below_1_5x_atr(self, settings):
+        """Crypto needs min 1.5x ATR — 1.2x should be rejected."""
+        indicators = _make_indicators(atr_last=400.0)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000,
+            stop_loss=41520,  # 480 away / ATR 400 = 1.2x (below 1.5x)
+            take_profit_1=43500,
+            symbol="BTC/USDT",
+            timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "too tight" in result.reason
+        assert "crypto" in result.reason
+
+    def test_forex_allows_0_8x_atr(self, settings):
+        """Forex min is 0.5x — 0.8x should pass rule 6 (ATR check)."""
+        indicators = _make_indicators(atr_last=0.005)
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=1.0800,
+            stop_loss=1.0760,  # 0.004 away / ATR 0.005 = 0.8x (above 0.5x)
+            take_profit_1=1.0900,
+            symbol="EUR_USD",
+            timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18,
+            divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert result.passed
+
+
 class TestRule7ADXTrendStrength:
     def test_rejects_crypto_with_low_adx(self, settings):
         """Crypto signals should be rejected when ADX < 20 (choppy market)."""
@@ -833,7 +876,7 @@ class TestFullValidation:
 
 def _make_indicators(
     rsi_last: float = 50.0,
-    atr_last: float = 350.0,
+    atr_last: float = 300.0,
     adx_last: float = 30.0,
     ema_long_values: list[float] | None = None,
     volumes: list[float] | None = None,

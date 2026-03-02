@@ -91,7 +91,7 @@ def sample_indicator_set() -> IndicatorSet:
         stoch_d=[float(rng.uniform(10, 90)) for _ in range(n)],
         cci=[float(rng.uniform(-200, 200)) for _ in range(n)],
         williams_r=[float(rng.uniform(-100, 0)) for _ in range(n)],
-        atr=[float(rng.uniform(200, 500)) for _ in range(n)],
+        atr=[float(rng.uniform(150, 300)) for _ in range(n)],
         adx=[float(rng.uniform(20, 60)) for _ in range(n)],
         ema_short=[float(42000 + rng.normal(0, 200)) for _ in range(n)],
         ema_medium=[float(41800 + rng.normal(0, 300)) for _ in range(n)],

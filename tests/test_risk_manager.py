@@ -90,6 +90,7 @@ class TestRiskChecks:
             anthropic_api_key="test",
             database_url="test",
             oanda_max_open_positions=10,
+            max_directional_pct=100.0,  # Disable directional cap for this test
         )
         rm = RiskManager(s)
         # 3 large OANDA positions — each 50,000 units of EUR_USD at 1.08
@@ -263,6 +264,215 @@ class TestPositionSizing:
         size = risk_manager.calculate_position_size(signal, empty_portfolio)
         max_notional = empty_portfolio.total_equity * 0.50
         assert size * signal.entry_price <= max_notional + 0.01
+
+
+class TestDirectionalExposureCap:
+    """Test the directional exposure cap (max % of positions in one direction)."""
+
+    def test_rejects_when_too_many_longs(self):
+        """Adding a 4th long to 3 long + 0 short should be blocked at 70%."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+            max_directional_pct=70.0,
+        )
+        rm = RiskManager(s)
+        orders = [
+            TradeOrder(
+                symbol=f"PAIR{i}/USDT",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=100,
+                stop_loss=95,
+                take_profit_1=110,
+                quantity=1,
+            )
+            for i in range(3)
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=7000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.LONG,
+            reasoning="test",
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="NEW/USDT",
+            timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio)
+        assert result.approved is False
+        assert "Directional cap" in result.reason
+
+    def test_allows_short_to_balance_longs(self):
+        """Adding a short when 3 longs open should pass (balances direction)."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+            max_directional_pct=70.0,
+        )
+        rm = RiskManager(s)
+        orders = [
+            TradeOrder(
+                symbol=f"PAIR{i}/USDT",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=100,
+                stop_loss=95,
+                take_profit_1=110,
+                quantity=1,
+            )
+            for i in range(3)
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=7000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.SHORT,
+            reasoning="test",
+            entry_price=42000,
+            stop_loss=42500,
+            take_profit_1=41000,
+            symbol="NEW/USDT",
+            timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio)
+        assert result.approved is True
+
+    def test_skips_cap_with_fewer_than_3_positions(self):
+        """Directional cap only applies when 3+ positions are open."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+            max_directional_pct=70.0,
+        )
+        rm = RiskManager(s)
+        orders = [
+            TradeOrder(
+                symbol=f"PAIR{i}/USDT",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=100,
+                stop_loss=95,
+                take_profit_1=110,
+                quantity=1,
+            )
+            for i in range(2)
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=8000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.LONG,
+            reasoning="test",
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="NEW/USDT",
+            timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio)
+        assert result.approved is True
+
+
+class TestReversalProtection:
+    """Test that winning positions are protected from reversal closes."""
+
+    def test_blocks_reversal_on_position_with_partial_tp(self):
+        """Position at tp_stage=1 should NOT be reversed out."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+        )
+        rm = RiskManager(s)
+        existing = TradeOrder(
+            symbol="BTC/USDT",
+            direction=SignalDirection.LONG,
+            state=OrderState.FILLED,
+            entry_price=41000,
+            stop_loss=40500,
+            take_profit_1=42000,
+            quantity=0.5,
+            tp_stage=1,
+        )
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=9000.0,
+            open_positions=[existing],
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.SHORT,
+            reasoning="test",
+            entry_price=42000,
+            stop_loss=42500,
+            take_profit_1=41000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio)
+        assert result.approved is False
+        assert "profit" in result.reason.lower()
+
+    def test_allows_reversal_on_losing_position(self):
+        """Position with no partial TP and no accumulated P&L can be reversed."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+        )
+        rm = RiskManager(s)
+        existing = TradeOrder(
+            symbol="BTC/USDT",
+            direction=SignalDirection.LONG,
+            state=OrderState.FILLED,
+            entry_price=41000,
+            stop_loss=40500,
+            take_profit_1=42000,
+            quantity=0.5,
+            tp_stage=0,
+            pnl=None,
+        )
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=9000.0,
+            open_positions=[existing],
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.SHORT,
+            reasoning="test",
+            entry_price=42000,
+            stop_loss=42500,
+            take_profit_1=41000,
+            symbol="BTC/USDT",
+            timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio)
+        assert result.approved is True
+        assert "REVERSAL" in result.reason
 
 
 class TestCircuitBreaker:

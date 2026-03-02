@@ -10,6 +10,9 @@ on:
       - "requirements.txt"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy to Fly.io Sydney

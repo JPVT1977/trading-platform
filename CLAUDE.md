@@ -10,7 +10,7 @@
 - **Database:** PostgreSQL (Fly Postgres)
 - **GitHub:** JPVT1977/trading-platform
 - **Trading Mode:** Paper (testnet) — all three brokers in sandbox/demo mode
-- **Last Updated:** 26 February 2026
+- **Last Updated:** 2 March 2026 (security hardening)
 
 ---
 
@@ -69,7 +69,7 @@ bot/dashboard/                      Web Dashboard
   setup_users.py                    Dashboard user seeding
   static/, templates/               Frontend assets
 
-tests/                              pytest-asyncio test suite (159 tests)
+tests/                              pytest-asyncio test suite (166 tests)
 tasks/                              Session management (handoff, lessons, todo)
 ```
 
@@ -154,6 +154,11 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | `use_multi_tf_confirmation` | True | Multi-TF — 4h setup + 1h trigger (enabled 27 Feb 2026) |
 | `max_atr_multiple` | 7.0 | Rule 6 — ATR stop width ceiling (was 5.0, relaxed 25 Feb 2026) |
 | `max_drawdown_pct` | 15.0 | Drawdown kill switch threshold |
+| `max_directional_pct` | 70.0 | Max % of positions in one direction (added 2 Mar 2026) |
+| `binance_starting_equity` | 7600.0 | Binance starting balance in USD (was hardcoded $5k, fixed 2 Mar 2026) |
+| `min_atr_stop_crypto` | 1.5 | Min ATR multiple for crypto stops (was 0.5 global, added 2 Mar 2026) |
+| `min_atr_stop_stock` | 1.0 | Min ATR multiple for stock CFD stops (added 2 Mar 2026) |
+| `min_atr_stop_commodity` | 1.0 | Min ATR multiple for commodity stops (added 2 Mar 2026) |
 
 ---
 
@@ -186,6 +191,16 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 11. **Separate exit_price column** — `filled_price` stores the fill/entry price, `exit_price` stores the close price. `UPDATE_ORDER_CLOSE` writes to `exit_price`, never overwrites `filled_price`.
 12. **Partial profit-taking** — 50% closed at TP1 (configurable via `tp1_close_pct`), remaining 50% trails to TP2 with progressive stop tightening. P&L accumulates across partial closes via `COALESCE(pnl, 0) + new_pnl`.
 13. **Multi-TF confirmation** — 4h signals stored as setups (24h expiry), 1h signals only execute if matching 4h setup exists. Dramatically reduces trade volume but increases quality.
+14. **Reversal protection** — winning positions (tp_stage > 0 or positive accumulated P&L) are protected from reversal closes. Let the partial TP system manage exits.
+15. **Per-asset-class ATR stops** — crypto needs 1.5x ATR min, stocks/commodities 1.0x, forex/indices 0.5x. Prevents noise-level stops on volatile instruments.
+16. **Directional exposure cap** — max 70% of positions in one direction when 3+ positions are open. Enforces diversification.
+17. **OANDA notional cap** — OANDA positions capped at 50% of equity in notional value, same principle as crypto. Prevents outsized OANDA losses.
+18. **Security headers** — `security_headers_middleware` sets X-Frame-Options, HSTS, CSP, X-Content-Type-Options, Referrer-Policy, Permissions-Policy on all responses.
+19. **CSRF protection** — Per-session CSRF token in cookie. All forms include hidden field. HTMX sends via `X-CSRF-Token` header. Middleware validates on all authenticated POSTs.
+20. **Auth rate limiting** — In-memory per-IP (5 attempts/60s) on `/login` and `/reset-password`. Returns 429 when exceeded.
+21. **Security event logging** — All auth events (login, password change, circuit breaker reset) logged with `SECURITY:` prefix and IP address.
+22. **Database SSL** — asyncpg pool uses `ssl=ssl.create_default_context()` for defence-in-depth on Fly internal network.
+23. **Pinned production deps** — `requirements.lock` has exact versions for Docker builds. `requirements.txt` for development.
 
 ---
 

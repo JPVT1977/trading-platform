@@ -101,15 +101,31 @@ def validate_signal(
                 reason=f"Short signal but RSI={latest_rsi:.1f} is extremely oversold (<20)",
             )
 
-    # Rule 6: Stop loss distance must be within reasonable ATR range (0.5-5x)
+    # Rule 6: Stop loss distance must be within reasonable ATR range
+    # Minimum varies by asset class — volatile instruments need wider stops
     latest_atr = _last_valid(indicators.atr)
     if latest_atr and latest_atr > 0 and signal.entry_price and signal.stop_loss:
         stop_distance = abs(signal.entry_price - signal.stop_loss)
         atr_multiple = stop_distance / latest_atr
-        if atr_multiple < 0.5:
+
+        asset_class = get_asset_class(signal.symbol)
+        min_atr_map = {
+            AssetClass.CRYPTO: settings.min_atr_stop_crypto,
+            AssetClass.STOCK: settings.min_atr_stop_stock,
+            AssetClass.COMMODITY: settings.min_atr_stop_commodity,
+            AssetClass.FOREX: settings.min_atr_stop_forex,
+            AssetClass.INDEX: settings.min_atr_stop_index,
+            AssetClass.BOND: settings.min_atr_stop_forex,
+        }
+        min_atr = min_atr_map.get(asset_class, 0.5)
+
+        if atr_multiple < min_atr:
             return ValidationResult(
                 passed=False,
-                reason=f"Stop too tight: {atr_multiple:.1f}x ATR (minimum 0.5x)",
+                reason=(
+                    f"Stop too tight: {atr_multiple:.2f}x ATR "
+                    f"(minimum {min_atr}x for {asset_class.value})"
+                ),
             )
         if atr_multiple > 7.0:
             return ValidationResult(

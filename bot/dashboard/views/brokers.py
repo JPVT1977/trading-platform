@@ -57,8 +57,7 @@ class BrokersViews:
             html = '<span class="badge badge-muted">Not registered</span>'
         except Exception as e:
             logger.warning(f"Broker test failed for {broker_id}: {e}")
-            error_msg = str(e)[:80]
-            html = f'<span class="badge badge-danger">Failed: {error_msg}</span>'
+            html = '<span class="badge badge-danger">Connection failed</span>'
 
         return web.Response(text=html, content_type="text/html")
 
