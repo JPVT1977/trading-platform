@@ -365,7 +365,7 @@
                         <td class="mono">{{ c.orders_placed }}</td>
                     </tr>
                     {% if symbols_data %}
-                    <tr class="expand-content" id="cycle-{{ loop.index }}">
+                    <tr class="expand-content" id="expand-cycle-{{ loop.index }}">
                         <td colspan="6">
                             <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 24px;">
                                 {% for sym, status in symbols_data.items() %}
