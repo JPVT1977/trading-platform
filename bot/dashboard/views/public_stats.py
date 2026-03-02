@@ -39,9 +39,11 @@ class PublicStatsViews:
         self._validate_token(request)
         stats = await self._overview._get_stats()
         broker_stats = await self._overview._get_all_broker_stats()
+        alltime = await self._overview._get_alltime_pnl()
         return {
             "stats": stats,
             "broker_stats": broker_stats,
+            "alltime": alltime,
             "token": request.query["token"],
         }
 
@@ -50,7 +52,8 @@ class PublicStatsViews:
         self._validate_token(request)
         stats = await self._overview._get_stats()
         broker_stats = await self._overview._get_all_broker_stats()
+        alltime = await self._overview._get_alltime_pnl()
         return aiohttp_jinja2.render_template(
             "partials/public_stats_cards.html", request,
-            {"stats": stats, "broker_stats": broker_stats},
+            {"stats": stats, "broker_stats": broker_stats, "alltime": alltime},
         )
