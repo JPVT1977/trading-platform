@@ -33,6 +33,7 @@ class OverviewViews:
         broker = request.query.get("broker", "all")
         stats = await self._get_stats()
         broker_stats = await self._get_all_broker_stats()
+        alltime = await self._get_alltime_pnl()
         signals = await self._pool.fetch(dq.GET_RECENT_SIGNALS, 10)
         cycles = await self._pool.fetch(dq.GET_RECENT_CYCLES, 5)
         return {
@@ -42,6 +43,7 @@ class OverviewViews:
             "circuit_breaker": self._get_circuit_breaker_status(),
             "stats": stats,
             "broker_stats": broker_stats,
+            "alltime": alltime,
             "signals": signals,
             "cycles": cycles,
             "broker_filter": broker,
@@ -53,6 +55,7 @@ class OverviewViews:
         broker = request.query.get("broker", "all")
         stats = await self._get_stats()
         broker_stats = await self._get_all_broker_stats()
+        alltime = await self._get_alltime_pnl()
         signals = await self._pool.fetch(dq.GET_RECENT_SIGNALS, 10)
         cycles = await self._pool.fetch(dq.GET_RECENT_CYCLES, 5)
 
@@ -61,6 +64,7 @@ class OverviewViews:
             "circuit_breaker": self._get_circuit_breaker_status(),
             "stats": stats,
             "broker_stats": broker_stats,
+            "alltime": alltime,
             "signals": signals,
             "cycles": cycles,
             "broker_filter": broker,
@@ -113,6 +117,51 @@ class OverviewViews:
             "in_trades": in_trades,
             "available": live_equity - in_trades,
             "total_leverage": total_leverage,
+        }
+
+    async def _get_alltime_pnl(self) -> dict:
+        """Calculate all-time P&L: current equity vs starting capital."""
+        s = self._settings
+
+        # Starting capital per broker (in AUD)
+        starting_capital = (
+            s.binance_starting_equity * _USD_TO_AUD
+            + s.oanda_starting_equity
+            + s.ig_starting_equity
+        )
+
+        # Current combined equity (already in AUD)
+        equity_row = await self._pool.fetchrow(dq.GET_LATEST_EQUITY)
+        current_equity = float(equity_row["total_equity"]) if equity_row else starting_capital
+
+        # All-time realised P&L from closed orders
+        pnl_row = await self._pool.fetchrow(dq.GET_ALLTIME_REALISED_PNL)
+        realised_pnl = float(pnl_row["total_pnl"]) if pnl_row else 0.0
+
+        # Trade record
+        counts_row = await self._pool.fetchrow(dq.GET_ALLTIME_TRADE_COUNTS)
+        wins = int(counts_row["wins"]) if counts_row else 0
+        losses = int(counts_row["losses"]) if counts_row else 0
+        total_trades = int(counts_row["total"]) if counts_row else 0
+        win_rate = (wins / total_trades * 100) if total_trades > 0 else 0.0
+
+        # Equity change = current equity - starting capital
+        equity_change = current_equity - starting_capital
+        equity_change_pct = (
+            equity_change / starting_capital * 100
+            if starting_capital > 0 else 0.0
+        )
+
+        return {
+            "starting_capital": starting_capital,
+            "current_equity": current_equity,
+            "equity_change": equity_change,
+            "equity_change_pct": equity_change_pct,
+            "realised_pnl": realised_pnl,
+            "wins": wins,
+            "losses": losses,
+            "total_trades": total_trades,
+            "win_rate": win_rate,
         }
 
     async def _get_all_broker_stats(self) -> dict[str, dict]:

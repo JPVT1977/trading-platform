@@ -45,6 +45,32 @@ UPSERT_USER = """
 """
 
 # ---------------------------------------------------------------------------
+# All-time P&L
+# ---------------------------------------------------------------------------
+
+GET_ALLTIME_REALISED_PNL = """
+    SELECT COALESCE(SUM(pnl), 0) AS total_pnl
+    FROM orders
+    WHERE state = 'closed' AND pnl IS NOT NULL
+"""
+
+GET_ALLTIME_REALISED_PNL_BY_BROKER = """
+    SELECT COALESCE(SUM(pnl), 0) AS total_pnl
+    FROM orders
+    WHERE state = 'closed' AND pnl IS NOT NULL AND broker = $1
+"""
+
+GET_ALLTIME_TRADE_COUNTS = """
+    SELECT
+        COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+        COUNT(*) FILTER (WHERE pnl < 0) AS losses,
+        COUNT(*) FILTER (WHERE pnl = 0 OR pnl IS NULL) AS breakeven,
+        COUNT(*) AS total
+    FROM orders
+    WHERE state = 'closed'
+"""
+
+# ---------------------------------------------------------------------------
 # Overview
 # ---------------------------------------------------------------------------
 

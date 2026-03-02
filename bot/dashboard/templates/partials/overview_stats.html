@@ -1,3 +1,43 @@
+<!-- All-Time P&L Banner -->
+{% if alltime %}
+<div class="stat-card" style="margin-bottom:16px; padding:20px 24px; border-left:4px solid {{ '#22c55e' if alltime.equity_change >= 0 else '#ef4444' }};">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+        <div>
+            <div class="stat-label" style="margin-bottom:4px;">All-Time P&L</div>
+            <div class="stat-value {{ 'positive' if alltime.equity_change >= 0 else 'negative' }} text-mono" style="font-size:28px;">
+                {{ "+" if alltime.equity_change >= 0 else "" }}A${{ "%.2f" | format(alltime.equity_change) }}
+                <span class="text-sm {{ 'text-success' if alltime.equity_change_pct >= 0 else 'text-danger' }}" style="font-size:16px;">
+                    ({{ "+" if alltime.equity_change_pct >= 0 else "" }}{{ "%.2f" | format(alltime.equity_change_pct) }}%)
+                </span>
+            </div>
+            <div class="stat-breakdown text-sm text-muted" style="margin-top:6px;">
+                Started: A${{ "%.0f" | format(alltime.starting_capital) }}
+                &nbsp;&rarr;&nbsp;
+                Now: A${{ "%.0f" | format(alltime.current_equity) }}
+                &nbsp;|&nbsp;
+                Realised: {{ "+" if alltime.realised_pnl >= 0 else "" }}A${{ "%.2f" | format(alltime.realised_pnl) }}
+            </div>
+        </div>
+        <div style="display:flex; gap:24px; text-align:center;">
+            <div>
+                <div class="stat-label">Wins</div>
+                <div class="text-mono text-success" style="font-size:20px;">{{ alltime.wins }}</div>
+            </div>
+            <div>
+                <div class="stat-label">Losses</div>
+                <div class="text-mono text-danger" style="font-size:20px;">{{ alltime.losses }}</div>
+            </div>
+            <div>
+                <div class="stat-label">Win Rate</div>
+                <div class="text-mono {{ 'text-success' if alltime.win_rate >= 50 else 'text-warning' if alltime.win_rate >= 40 else 'text-danger' }}" style="font-size:20px;">
+                    {{ "%.0f" | format(alltime.win_rate) }}%
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Per-Broker Stats Cards -->
 {% if broker_stats and broker_stats|length > 0 %}
 <div style="display:grid; grid-template-columns:repeat({{ broker_stats|length }}, 1fr); gap:16px; margin-bottom:16px;">
