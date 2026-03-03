@@ -340,6 +340,121 @@ class TestRule7ADXTrendStrength:
         assert "choppy" not in result.reason
 
 
+class TestRule7bCounterTrendADX:
+    """Test the counter-trend ADX filter (Rule 7b)."""
+
+    def test_rejects_long_in_strong_downtrend(self, settings):
+        """LONG signal with ADX >= 25, price below EMA200, EMA200 falling → rejected."""
+        # EMA200 falling: values decrease over time
+        ema_vals = [42000.0 - i * 10.0 for i in range(30)]  # Falling EMA
+        # Price below EMA200: closes below the last EMA value
+        closes = [ema_vals[-1] - 200.0] * 30  # Well below EMA200
+        indicators = _make_indicators(adx_last=30.0, ema_long_values=ema_vals)
+        indicators.closes = closes
+
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85, reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=41500, stop_loss=41000, take_profit_1=42500,
+            symbol="EUR_USD", timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "Counter-trend rejected" in result.reason
+        assert "LONG" in result.reason
+        assert "downtrend" in result.reason
+
+    def test_rejects_short_in_strong_uptrend(self, settings):
+        """SHORT signal with ADX >= 25, price above EMA200, EMA200 rising → rejected."""
+        ema_vals = [40000.0 + i * 10.0 for i in range(30)]  # Rising EMA
+        closes = [ema_vals[-1] + 200.0] * 30  # Well above EMA200
+        indicators = _make_indicators(adx_last=28.0, ema_long_values=ema_vals)
+        indicators.closes = closes
+
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85, reasoning="test",
+            direction=SignalDirection.SHORT,
+            entry_price=42000, stop_loss=42800, take_profit_1=40400,
+            symbol="EUR_USD", timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "Counter-trend rejected" in result.reason
+        assert "SHORT" in result.reason
+        assert "uptrend" in result.reason
+
+    def test_allows_with_trend_long_in_uptrend(self, settings):
+        """LONG signal in a confirmed uptrend should pass Rule 7b."""
+        ema_vals = [40000.0 + i * 10.0 for i in range(30)]  # Rising EMA
+        closes = [ema_vals[-1] + 200.0] * 30  # Above EMA
+        indicators = _make_indicators(adx_last=30.0, ema_long_values=ema_vals)
+        indicators.closes = closes
+
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85, reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=42000, stop_loss=41500, take_profit_1=43000,
+            symbol="EUR_USD", timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18, divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "Counter-trend" not in result.reason
+
+    def test_allows_when_adx_below_threshold(self, settings):
+        """ADX below threshold — Rule 7b doesn't apply, even if trend indicators disagree."""
+        ema_vals = [42000.0 - i * 10.0 for i in range(30)]  # Falling EMA
+        closes = [ema_vals[-1] - 200.0] * 30  # Below EMA
+        indicators = _make_indicators(adx_last=20.0, ema_long_values=ema_vals)
+        indicators.closes = closes
+
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85, reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=41500, stop_loss=41000, take_profit_1=42500,
+            symbol="EUR_USD", timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18, divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "Counter-trend" not in result.reason
+
+    def test_allows_ambiguous_trend(self, settings):
+        """Mixed signals (price below EMA but EMA rising) → passes through."""
+        ema_vals = [40000.0 + i * 10.0 for i in range(30)]  # Rising EMA
+        closes = [ema_vals[-1] - 200.0] * 30  # Below EMA (contradicts EMA direction)
+        indicators = _make_indicators(adx_last=30.0, ema_long_values=ema_vals)
+        indicators.closes = closes
+
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85, reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=41500, stop_loss=41000, take_profit_1=42500,
+            symbol="EUR_USD", timeframe="4h",
+            confirming_indicators=["RSI", "MACD"],
+            swing_length_bars=18, divergence_magnitude=8.5,
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert "Counter-trend" not in result.reason
+
+    def test_applies_to_all_asset_classes(self, settings):
+        """Counter-trend filter applies to crypto too, not just forex."""
+        ema_vals = [42000.0 - i * 50.0 for i in range(30)]  # Falling EMA
+        closes = [ema_vals[-1] - 500.0] * 30  # Below EMA
+        indicators = _make_indicators(adx_last=35.0, ema_long_values=ema_vals)
+        indicators.closes = closes
+
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85, reasoning="test",
+            direction=SignalDirection.LONG,
+            entry_price=40000, stop_loss=39000, take_profit_1=42000,
+            symbol="BTC/USDT", timeframe="4h",
+        )
+        result = validate_signal(signal, indicators, settings)
+        assert not result.passed
+        assert "Counter-trend rejected" in result.reason
+
+
 class TestRule8RangingMarket:
     def test_rejects_ranging_market(self, settings):
         """Signals should be rejected when ADX < 25 and EMA 200 is flat."""

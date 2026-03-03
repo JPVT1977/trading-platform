@@ -143,6 +143,45 @@ def validate_signal(
                 reason=f"Crypto market too choppy: ADX={latest_adx:.1f} (minimum 20)",
             )
 
+    # Rule 7b: Counter-trend ADX filter — reject signals opposing a strong confirmed trend
+    if (
+        latest_adx is not None
+        and latest_adx >= settings.counter_trend_adx_threshold
+        and signal.direction is not None
+    ):
+        ema_long_vals = [v for v in indicators.ema_long if v is not None]
+        if len(ema_long_vals) >= 10:
+            ema_now = ema_long_vals[-1]
+            ema_10_ago = ema_long_vals[-10]
+            latest_close = indicators.closes[-1] if indicators.closes else None
+
+            if latest_close is not None and ema_10_ago != 0:
+                ema_slope = ema_now - ema_10_ago
+                price_below_ema = latest_close < ema_now
+                price_above_ema = latest_close > ema_now
+                ema_falling = ema_slope < 0
+                ema_rising = ema_slope > 0
+
+                # Confirmed downtrend: price below EMA200 AND EMA200 falling
+                if price_below_ema and ema_falling and signal.direction == SignalDirection.LONG:
+                    return ValidationResult(
+                        passed=False,
+                        reason=(
+                            f"Counter-trend rejected: LONG signal in strong downtrend "
+                            f"(ADX={latest_adx:.1f}, price below EMA200, EMA200 falling)"
+                        ),
+                    )
+
+                # Confirmed uptrend: price above EMA200 AND EMA200 rising
+                if price_above_ema and ema_rising and signal.direction == SignalDirection.SHORT:
+                    return ValidationResult(
+                        passed=False,
+                        reason=(
+                            f"Counter-trend rejected: SHORT signal in strong uptrend "
+                            f"(ADX={latest_adx:.1f}, price above EMA200, EMA200 rising)"
+                        ),
+                    )
+
     # Rule 8: Counter-trend in ranging market — ADX < 25 + flat 200 EMA
     if latest_adx is not None and latest_adx < 25 and signal.direction is not None:
         ema_long_vals = [v for v in indicators.ema_long if v is not None]

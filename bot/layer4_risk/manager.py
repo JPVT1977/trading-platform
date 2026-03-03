@@ -8,6 +8,7 @@ from bot.config import Settings
 from bot.database import queries
 from bot.database.connection import Database
 from bot.instruments import AssetClass, get_asset_class, get_instrument, is_oanda
+from bot.instruments import OANDA_INSTRUMENTS
 from bot.models import (
     DivergenceSignal,
     OrderState,
@@ -62,6 +63,67 @@ _ASSET_CLASS_CORRELATION_LIMITS: dict[AssetClass, int] = {
     AssetClass.BOND: 1,
     AssetClass.CRYPTO: 4,
 }
+
+
+# Only real fiat currencies — index/commodity/crypto base assets (SPX, XAU, BTC etc.)
+# are already covered by asset-class correlation limits.
+_TRACKABLE_CURRENCIES: set[str] = {
+    "USD", "EUR", "GBP", "AUD", "NZD", "CAD", "CHF", "JPY",
+}
+
+# Stablecoins normalised to USD
+_STABLECOIN_ALIASES: set[str] = {"USDT", "BUSD", "USDC"}
+
+
+def _normalise_currency(ccy: str) -> str | None:
+    """Return the trackable currency name, or None if not a fiat currency."""
+    if ccy in _TRACKABLE_CURRENCIES:
+        return ccy
+    if ccy in _STABLECOIN_ALIASES:
+        return "USD"
+    return None
+
+
+def _get_currency_exposures(
+    positions: list[TradeOrder],
+    active_states: set[OrderState],
+) -> dict[str, int]:
+    """Calculate net currency exposure across all open positions.
+
+    For forex pairs (base and quote both trackable):
+        LONG EUR_USD  = +1 EUR, -1 USD
+        SHORT EUR_USD = -1 EUR, +1 USD
+
+    For non-forex (index/commodity/stock/crypto — base is not a fiat currency):
+        Only track quote currency exposure.
+        LONG US2000_USD  = -1 USD  (buying the index, selling USD)
+        SHORT XAU_USD    = +1 USD  (selling gold, receiving USD)
+
+    Crypto with stablecoin quote (BTC/USDT):
+        LONG BTC/USDT  = -1 USD  (selling USDT/USD to buy BTC)
+        SHORT BTC/USDT = +1 USD  (selling BTC, receiving USDT/USD)
+    """
+    exposures: dict[str, int] = {}
+
+    for p in positions:
+        if p.state not in active_states:
+            continue
+
+        inst = get_instrument(p.symbol)
+        base_ccy = _normalise_currency(inst.base_currency)
+        quote_ccy = _normalise_currency(inst.quote_currency)
+
+        direction_sign = 1 if p.direction == SignalDirection.LONG else -1
+
+        # Base currency: long = +1, short = -1 (only if trackable fiat)
+        if base_ccy is not None:
+            exposures[base_ccy] = exposures.get(base_ccy, 0) + direction_sign
+
+        # Quote currency: long = -1, short = +1 (only if trackable fiat)
+        if quote_ccy is not None:
+            exposures[quote_ccy] = exposures.get(quote_ccy, 0) - direction_sign
+
+    return exposures
 
 
 class RiskManager:
@@ -198,6 +260,32 @@ class RiskManager:
                         f"(max {max_corr} for {signal_ac.value})"
                     ),
                 )
+
+        # Check 5b: Currency exposure — prevent overloading any single currency
+        if signal.direction is not None:
+            # Build hypothetical exposure including the new signal
+            hypothetical_order = TradeOrder(
+                symbol=signal.symbol,
+                direction=signal.direction,
+                state=OrderState.FILLED,
+                entry_price=signal.entry_price or 0,
+                stop_loss=signal.stop_loss or 0,
+                take_profit_1=signal.take_profit_1 or 0,
+                quantity=0,
+            )
+            hypothetical_positions = list(portfolio.open_positions) + [hypothetical_order]
+            exposures = _get_currency_exposures(hypothetical_positions, active_states)
+            max_exp = self._settings.max_currency_exposure
+            for ccy, net in exposures.items():
+                if abs(net) > max_exp:
+                    direction_word = "short" if net < 0 else "long"
+                    return RiskCheckResult(
+                        approved=False,
+                        reason=(
+                            f"Currency exposure: {abs(net)} positions effectively "
+                            f"{direction_word} {ccy} (max {max_exp})"
+                        ),
+                    )
 
         # Check 6: Directional exposure cap — max % of positions in one direction
         if signal.direction is not None and len(portfolio.open_positions) >= 3:

@@ -116,7 +116,7 @@ APScheduler triggers `analysis_cycle()` every 5 minutes:
 
 ---
 
-## Validator Rules (15 Rules)
+## Validator Rules (16 Rules)
 
 The deterministic validator in `validator.py` runs these rules in order. First failure rejects the signal:
 
@@ -130,7 +130,8 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | 5 | RSI not contradicting direction |
 | 6 | ATR stop distance (0.5x–5.0x ATR) |
 | 7 | ADX trend strength (crypto only, >= threshold) |
-| 8 | Ranging market detection (Bollinger bandwidth) |
+| 7b | Counter-trend ADX filter — rejects signals opposing strong confirmed trends (all asset classes, added 3 Mar 2026) |
+| 8 | Ranging market detection (ADX < 25 + flat EMA200) |
 | 9 | Minimum 2 confirming oscillators |
 | 10 | Swing length minimums (10 bars 4h, 7 bars 1h) |
 | 11 | RSI divergence magnitude >= 3.0 |
@@ -159,6 +160,8 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | `min_atr_stop_crypto` | 1.5 | Min ATR multiple for crypto stops (was 0.5 global, added 2 Mar 2026) |
 | `min_atr_stop_stock` | 1.0 | Min ATR multiple for stock CFD stops (added 2 Mar 2026) |
 | `min_atr_stop_commodity` | 1.0 | Min ATR multiple for commodity stops (added 2 Mar 2026) |
+| `max_currency_exposure` | 2 | Max net positions long/short any single fiat currency (added 3 Mar 2026) |
+| `counter_trend_adx_threshold` | 25.0 | Rule 7b — ADX above this triggers counter-trend rejection (added 3 Mar 2026) |
 
 ---
 
@@ -201,6 +204,8 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 21. **Security event logging** — All auth events (login, password change, circuit breaker reset) logged with `SECURITY:` prefix and IP address.
 22. **Database SSL** — asyncpg pool uses `ssl=ssl.create_default_context()` for defence-in-depth on Fly internal network.
 23. **Pinned production deps** — `requirements.lock` has exact versions for Docker builds. `requirements.txt` for development.
+24. **Currency exposure filter** — Tracks net fiat currency exposure across all open positions (forex pairs decomposed into base/quote; non-forex only tracks quote). Max 2 positions effectively long/short any single currency. Prevents correlated USD-short blowups like 26 Feb 2026 (-A$361). Stablecoins normalised to USD.
+25. **Counter-trend ADX filter** — Rejects signals opposing a confirmed strong trend (ADX >= 25 + price vs EMA200 position + EMA200 slope must agree). Applies to all asset classes. Ambiguous trends pass through.
 
 ---
 

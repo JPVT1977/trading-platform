@@ -91,6 +91,7 @@ class TestRiskChecks:
             database_url="test",
             oanda_max_open_positions=10,
             max_directional_pct=100.0,  # Disable directional cap for this test
+            max_currency_exposure=10,  # Disable currency exposure for this test
         )
         rm = RiskManager(s)
         # 3 large OANDA positions — each 50,000 units of EUR_USD at 1.08
@@ -277,6 +278,7 @@ class TestDirectionalExposureCap:
             database_url="test",
             binance_max_open_positions=10,
             max_directional_pct=70.0,
+            max_currency_exposure=10,  # Disable currency exposure for this test
         )
         rm = RiskManager(s)
         orders = [
@@ -360,6 +362,7 @@ class TestDirectionalExposureCap:
             database_url="test",
             binance_max_open_positions=10,
             max_directional_pct=70.0,
+            max_currency_exposure=10,  # Disable currency exposure for this test
         )
         rm = RiskManager(s)
         orders = [
@@ -473,6 +476,218 @@ class TestReversalProtection:
         result = rm.check_entry(signal, portfolio)
         assert result.approved is True
         assert "REVERSAL" in result.reason
+
+
+class TestCurrencyExposure:
+    """Test the currency exposure filter (Check 5b)."""
+
+    def _make_rm(self, max_currency_exposure: int = 2) -> RiskManager:
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            oanda_max_open_positions=10,
+            max_directional_pct=100.0,
+            max_currency_exposure=max_currency_exposure,
+        )
+        return RiskManager(s)
+
+    def test_rejects_third_usd_short_position(self):
+        """The 26 Feb scenario: EUR_USD long + GBP_USD long + US2000_USD long = 3x short USD.
+
+        With max_currency_exposure=2, the third should be blocked.
+        """
+        rm = self._make_rm(max_currency_exposure=2)
+        orders = [
+            TradeOrder(
+                symbol="EUR_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.0800, stop_loss=1.0740,
+                take_profit_1=1.0920, quantity=10000,
+            ),
+            TradeOrder(
+                symbol="GBP_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.2600, stop_loss=1.2540,
+                take_profit_1=1.2720, quantity=10000,
+            ),
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0, available_balance=8000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85,
+            direction=SignalDirection.LONG, reasoning="test",
+            entry_price=2100.0, stop_loss=2080.0, take_profit_1=2140.0,
+            symbol="US2000_USD", timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio, broker_id="oanda")
+        assert result.approved is False
+        assert "Currency exposure" in result.reason
+        assert "USD" in result.reason
+
+    def test_allows_diversified_currency_exposure(self):
+        """EUR_USD long + AUD_JPY long = different currencies, should pass."""
+        rm = self._make_rm(max_currency_exposure=2)
+        orders = [
+            TradeOrder(
+                symbol="EUR_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.0800, stop_loss=1.0740,
+                take_profit_1=1.0920, quantity=10000,
+            ),
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0, available_balance=9000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85,
+            direction=SignalDirection.LONG, reasoning="test",
+            entry_price=98.50, stop_loss=98.00, take_profit_1=99.50,
+            symbol="AUD_JPY", timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio, broker_id="oanda")
+        assert result.approved is True
+
+    def test_opposite_directions_cancel_out(self):
+        """EUR_USD long (-1 USD) + GBP_USD short (+1 USD) = net 0 USD."""
+        rm = self._make_rm(max_currency_exposure=2)
+        orders = [
+            TradeOrder(
+                symbol="EUR_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.0800, stop_loss=1.0740,
+                take_profit_1=1.0920, quantity=10000,
+            ),
+            TradeOrder(
+                symbol="GBP_USD",
+                direction=SignalDirection.SHORT,
+                state=OrderState.FILLED,
+                entry_price=1.2600, stop_loss=1.2660,
+                take_profit_1=1.2480, quantity=10000,
+            ),
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0, available_balance=8000.0,
+            open_positions=orders,
+        )
+        # Third USD-short position: net USD would be -1 (long cancels short)
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85,
+            direction=SignalDirection.LONG, reasoning="test",
+            entry_price=2100.0, stop_loss=2080.0, take_profit_1=2140.0,
+            symbol="US2000_USD", timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio, broker_id="oanda")
+        assert result.approved is True
+
+    def test_crypto_stablecoin_normalised_to_usd(self):
+        """BTC/USDT long should count as -1 USD (USDT normalised to USD)."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+            max_directional_pct=100.0,
+            max_currency_exposure=2,
+        )
+        rm = RiskManager(s)
+        orders = [
+            TradeOrder(
+                symbol="EUR_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.0800, stop_loss=1.0740,
+                take_profit_1=1.0920, quantity=10000,
+            ),
+            TradeOrder(
+                symbol="GBP_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.2600, stop_loss=1.2540,
+                take_profit_1=1.2720, quantity=10000,
+            ),
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0, available_balance=8000.0,
+            open_positions=orders,
+        )
+        # BTC/USDT long = -1 USDT = -1 USD → total USD = -3 → blocked
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85,
+            direction=SignalDirection.LONG, reasoning="test",
+            entry_price=42000, stop_loss=41500, take_profit_1=43000,
+            symbol="BTC/USDT", timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio, broker_id="binance")
+        assert result.approved is False
+        assert "Currency exposure" in result.reason
+        assert "USD" in result.reason
+
+    def test_non_fiat_base_not_tracked(self):
+        """XAU_USD (gold) base currency XAU is not fiat — only USD side tracked."""
+        rm = self._make_rm(max_currency_exposure=2)
+        orders = [
+            TradeOrder(
+                symbol="XAU_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=2000.0, stop_loss=1980.0,
+                take_profit_1=2040.0, quantity=1,
+            ),
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0, available_balance=9000.0,
+            open_positions=orders,
+        )
+        # Second USD-short instrument — should be allowed (net = -2 USD = at limit)
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85,
+            direction=SignalDirection.LONG, reasoning="test",
+            entry_price=70.0, stop_loss=69.0, take_profit_1=72.0,
+            symbol="WTICO_USD", timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio, broker_id="oanda")
+        assert result.approved is True
+
+    def test_ignores_closed_positions(self):
+        """Closed/cancelled positions should not count toward exposure."""
+        rm = self._make_rm(max_currency_exposure=2)
+        orders = [
+            TradeOrder(
+                symbol="EUR_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.CLOSED,  # Closed — should be ignored
+                entry_price=1.0800, stop_loss=1.0740,
+                take_profit_1=1.0920, quantity=10000,
+            ),
+            TradeOrder(
+                symbol="GBP_USD",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=1.2600, stop_loss=1.2540,
+                take_profit_1=1.2720, quantity=10000,
+            ),
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0, available_balance=8000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True, confidence=0.85,
+            direction=SignalDirection.LONG, reasoning="test",
+            entry_price=2100.0, stop_loss=2080.0, take_profit_1=2140.0,
+            symbol="US2000_USD", timeframe="4h",
+        )
+        result = rm.check_entry(signal, portfolio, broker_id="oanda")
+        # Only 1 active USD-short position + 1 new = 2 = at limit, not over
+        assert result.approved is True
 
 
 class TestCircuitBreaker:
