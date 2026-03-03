@@ -241,37 +241,36 @@ class ExecutionEngine:
             # Stage 0: Full position — check SL or TP1
             # ==========================================================
             if tp_stage == 0:
-                # Pre-TP1 trailing stop (only when partial TP is disabled)
-                if partial_tp == 0:
-                    original_sl = row["original_stop_loss"]
-                    sl_trail_stage = row["sl_trail_stage"] or 0
-                    if original_sl is not None and sl_trail_stage < 2:
-                        total_range = abs(take_profit_1 - entry_price)
-                        if total_range > 0:
-                            if direction == "long":
-                                progress = (current_price - entry_price) / total_range
-                            else:
-                                progress = (entry_price - current_price) / total_range
+                # Pre-TP1 trailing stop
+                original_sl = row["original_stop_loss"]
+                sl_trail_stage = row["sl_trail_stage"] or 0
+                if original_sl is not None and sl_trail_stage < 2:
+                    total_range = abs(take_profit_1 - entry_price)
+                    if total_range > 0:
+                        if direction == "long":
+                            progress = (current_price - entry_price) / total_range
+                        else:
+                            progress = (entry_price - current_price) / total_range
 
-                            if progress >= 0.75 and sl_trail_stage < 2:
-                                new_sl = (
-                                    entry_price + 0.25 * total_range if direction == "long"
-                                    else entry_price - 0.25 * total_range
-                                )
-                                await pool.execute(
-                                    queries.UPDATE_ORDER_STOP_LOSS,
-                                    order_id, new_sl, 2,
-                                )
-                                stop_loss = new_sl
-                                logger.info(f"PROFIT LOCK: {symbol} SL moved to {new_sl:.5f}")
-                            elif progress >= 0.50 and sl_trail_stage < 1:
-                                new_sl = entry_price
-                                await pool.execute(
-                                    queries.UPDATE_ORDER_STOP_LOSS,
-                                    order_id, new_sl, 1,
-                                )
-                                stop_loss = new_sl
-                                logger.info(f"BREAKEVEN: {symbol} SL moved to {new_sl:.5f}")
+                        if progress >= 0.75 and sl_trail_stage < 2:
+                            new_sl = (
+                                entry_price + 0.25 * total_range if direction == "long"
+                                else entry_price - 0.25 * total_range
+                            )
+                            await pool.execute(
+                                queries.UPDATE_ORDER_STOP_LOSS,
+                                order_id, new_sl, 2,
+                            )
+                            stop_loss = new_sl
+                            logger.info(f"PROFIT LOCK: {symbol} SL moved to {new_sl:.5f}")
+                        elif progress >= 0.50 and sl_trail_stage < 1:
+                            new_sl = entry_price
+                            await pool.execute(
+                                queries.UPDATE_ORDER_STOP_LOSS,
+                                order_id, new_sl, 1,
+                            )
+                            stop_loss = new_sl
+                            logger.info(f"BREAKEVEN: {symbol} SL moved to {new_sl:.5f}")
 
                 # Check SL
                 hit_sl = (
@@ -310,11 +309,16 @@ class ExecutionEngine:
                         pnl, fees = self._calc_pnl(
                             direction, entry_price, current_price, close_qty, inst,
                         )
-                        # Move SL to entry (breakeven) immediately
-                        new_sl = entry_price
+                        # Move SL to at least entry (breakeven) — never regress
+                        sl_trail_stage = row["sl_trail_stage"] or 0
+                        if direction == "long":
+                            new_sl = max(stop_loss, entry_price)
+                        else:
+                            new_sl = min(stop_loss, entry_price)
                         await pool.execute(
                             queries.UPDATE_ORDER_PARTIAL_CLOSE,
                             order_id, new_remaining, pnl, fees, 1, new_sl,
+                            sl_trail_stage,
                         )
                         pnl_prefix = "+" if pnl >= 0 else ""
                         logger.info(

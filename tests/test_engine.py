@@ -312,3 +312,182 @@ class TestPartialProfitTaking:
 
         assert closed == 1
         engine._telegram.send_partial_close_alert.assert_not_called()
+
+
+class TestPreTP1TrailingStop:
+    """Test pre-TP1 trailing stop logic (breakeven + profit lock)."""
+
+    @pytest.mark.asyncio
+    async def test_breakeven_at_50pct_progress_long(self, engine):
+        """At 50% progress toward TP1, SL moves to entry (breakeven)."""
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            original_stop_loss=90.0, sl_trail_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        # 50% progress: entry=100, TP1=120, range=20, 50%=110
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 111.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+        # Should update SL to entry price (100.0) with sl_trail_stage=1
+        calls = engine._db.pool.execute.call_args_list
+        sl_calls = [c for c in calls if "stop_loss = $2" in str(c)]
+        assert len(sl_calls) == 1
+        # Args: query, order_id, new_sl, sl_trail_stage
+        assert sl_calls[0].args[2] == 100.0  # breakeven = entry
+        assert sl_calls[0].args[3] == 1  # sl_trail_stage
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_at_75pct_progress_long(self, engine):
+        """At 75% progress toward TP1, SL moves to entry + 25% of range."""
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            original_stop_loss=90.0, sl_trail_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        # 75% progress: entry=100, TP1=120, range=20, 75%=115
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 116.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+        calls = engine._db.pool.execute.call_args_list
+        sl_calls = [c for c in calls if "stop_loss = $2" in str(c)]
+        assert len(sl_calls) == 1
+        # Profit lock = entry + 0.25 * range = 100 + 5 = 105
+        assert sl_calls[0].args[2] == 105.0
+        assert sl_calls[0].args[3] == 2  # sl_trail_stage
+
+    @pytest.mark.asyncio
+    async def test_breakeven_short_direction(self, engine):
+        """Pre-TP1 breakeven works for short positions."""
+        row = _make_order_row(
+            direction="short", entry_price=100.0, stop_loss=110.0,
+            take_profit_1=80.0, quantity=10.0, tp_stage=0,
+            original_stop_loss=110.0, sl_trail_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        # 50% progress for short: entry=100, TP1=80, range=20, 50% at 90
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 89.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+        calls = engine._db.pool.execute.call_args_list
+        sl_calls = [c for c in calls if "stop_loss = $2" in str(c)]
+        assert len(sl_calls) == 1
+        assert sl_calls[0].args[2] == 100.0  # breakeven = entry
+
+    @pytest.mark.asyncio
+    async def test_tp1_partial_close_preserves_trailed_sl(self, engine):
+        """TP1 partial close never moves SL backwards from a trailed position."""
+        # SL already trailed to 105 (profit lock) before TP1 hit
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=105.0,
+            take_profit_1=120.0, take_profit_2=140.0,
+            quantity=10.0, tp_stage=0,
+            original_stop_loss=90.0, sl_trail_stage=2,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        # Price at TP1
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 122.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+        # Partial close should preserve SL at 105, not regress to 100
+        calls = engine._db.pool.execute.call_args_list
+        partial_calls = [c for c in calls if "remaining_quantity = $2" in str(c)]
+        assert len(partial_calls) == 1
+        # Args: query, order_id, remaining, pnl, fees, tp_stage, stop_loss, sl_trail_stage
+        new_sl = partial_calls[0].args[6]
+        assert new_sl == 105.0  # preserved, not regressed to entry (100)
+
+    @pytest.mark.asyncio
+    async def test_tp1_partial_close_short_preserves_trailed_sl(self, engine):
+        """Short: TP1 partial close never moves SL above a trailed position."""
+        # SL already trailed to 95 (profit lock) before TP1 hit
+        row = _make_order_row(
+            direction="short", entry_price=100.0, stop_loss=95.0,
+            take_profit_1=80.0, take_profit_2=60.0,
+            quantity=10.0, tp_stage=0,
+            original_stop_loss=110.0, sl_trail_stage=2,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        # Price at TP1 for short
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 78.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+        calls = engine._db.pool.execute.call_args_list
+        partial_calls = [c for c in calls if "remaining_quantity = $2" in str(c)]
+        assert len(partial_calls) == 1
+        new_sl = partial_calls[0].args[6]
+        assert new_sl == 95.0  # preserved, not regressed to entry (100)
+
+    @pytest.mark.asyncio
+    async def test_no_trail_below_50pct(self, engine):
+        """Below 50% progress, no trailing occurs."""
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            original_stop_loss=90.0, sl_trail_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        # 40% progress: entry=100, TP1=120, range=20, 40%=108
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 108.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+        # No SL update calls
+        calls = engine._db.pool.execute.call_args_list
+        sl_calls = [c for c in calls if "stop_loss = $2" in str(c)]
+        assert len(sl_calls) == 0

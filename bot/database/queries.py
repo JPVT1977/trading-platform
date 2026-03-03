@@ -88,6 +88,7 @@ UPDATE_ORDER_PARTIAL_CLOSE = """
         fees = COALESCE(fees, 0) + $4,
         tp_stage = $5,
         stop_loss = $6,
+        sl_trail_stage = $7,
         updated_at = NOW()
     WHERE id = $1
 """

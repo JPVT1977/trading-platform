@@ -192,7 +192,7 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 9. **Composite broker pattern** — `IGStockBroker` transparently delegates data to Yahoo, orders to IG. Rest of codebase sees a normal `BrokerInterface`.
 10. **Per-broker risk isolation** — Each broker has independent position limits, correlation limits, and confidence thresholds.
 11. **Separate exit_price column** — `filled_price` stores the fill/entry price, `exit_price` stores the close price. `UPDATE_ORDER_CLOSE` writes to `exit_price`, never overwrites `filled_price`.
-12. **Partial profit-taking** — 50% closed at TP1 (configurable via `tp1_close_pct`), remaining 50% trails to TP2 with progressive stop tightening. P&L accumulates across partial closes via `COALESCE(pnl, 0) + new_pnl`.
+12. **Partial profit-taking with pre-TP1 trailing** — 50% closed at TP1 (configurable via `tp1_close_pct`), remaining 50% trails to TP2 with progressive stop tightening. Pre-TP1: at 50% progress toward TP1 SL moves to breakeven (entry), at 75% progress SL locks profit at entry + 25% of range. TP1 partial close never regresses SL below the trailed level. P&L accumulates across partial closes via `COALESCE(pnl, 0) + new_pnl`.
 13. **Multi-TF confirmation** — 4h signals stored as setups (24h expiry), 1h signals only execute if matching 4h setup exists. Dramatically reduces trade volume but increases quality.
 14. **Reversal protection** — winning positions (tp_stage > 0 or positive accumulated P&L) are protected from reversal closes. Let the partial TP system manage exits.
 15. **Per-asset-class ATR stops** — crypto needs 1.5x ATR min, stocks/commodities 1.0x, forex/indices 0.5x. Prevents noise-level stops on volatile instruments.

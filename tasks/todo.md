@@ -3,9 +3,10 @@
 > Updated by Claude Code during every session.
 
 ## In Progress
-- [ ] Monitor 48-72h trade quality with new fixes (deployed 2 Mar)
+- [ ] Monitor 48-72h trade quality with new fixes (deployed 2-3 Mar)
 
 ## Completed
+- [x] Add currency exposure filter + counter-trend ADX filter (3 Mar) — Check 5b + Rule 7b, 178 tests passing
 - [x] Add all-time P&L to public stats page (2 Mar) — banner with equity change, realised P&L, wins/losses/win rate
 - [x] Fix outdated starting capital and position limits in overview Risk Model panel (2 Mar)
 - [x] Investigate IG stuck trades (2 Mar) — paper trades, not stuck, just within SL-TP range
