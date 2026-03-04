@@ -76,18 +76,20 @@ class Settings(BaseSettings):
     counter_trend_adx_threshold: float = 25.0  # ADX above this = strong trend; reject counter-trend signals
 
     # --- Binance crypto broker ---
-    binance_starting_equity: float = 7600.0
-    binance_max_open_positions: int = 2
+    binance_starting_equity: float = 30000.0
+    binance_max_open_positions: int = 5
     binance_max_correlation_exposure: int = 3
     binance_min_confidence: float = 0.7
 
     oanda_max_open_positions: int = 3
     oanda_max_correlation_exposure: int = 3
     oanda_min_confidence: float = 0.75
+    oanda_paused: bool = False  # True = no new trades, existing positions still monitored
 
     ig_max_open_positions: int = 5
     ig_max_correlation_exposure: int = 3
     ig_min_confidence: float = 0.80
+    ig_paused: bool = False  # True = no new trades, existing positions still monitored
 
     # --- OANDA Forex Broker (optional) ---
     oanda_api_token: str = ""
@@ -110,12 +112,24 @@ class Settings(BaseSettings):
     setup_expiry_hours: int = 24  # How long a 4h setup stays valid
 
     @property
-    def oanda_enabled(self) -> bool:
+    def oanda_configured(self) -> bool:
+        """True if OANDA credentials and symbols are set (broker can be registered)."""
         return bool(self.oanda_api_token and self.oanda_account_id and self.oanda_symbols)
 
     @property
-    def ig_enabled(self) -> bool:
+    def oanda_enabled(self) -> bool:
+        """True if OANDA is configured AND not paused (should analyse symbols)."""
+        return self.oanda_configured and not self.oanda_paused
+
+    @property
+    def ig_configured(self) -> bool:
+        """True if IG credentials and symbols are set (broker can be registered)."""
         return bool(self.ig_api_key and self.ig_username and self.ig_password and self.ig_symbols)
+
+    @property
+    def ig_enabled(self) -> bool:
+        """True if IG is configured AND not paused (should analyse symbols)."""
+        return self.ig_configured and not self.ig_paused
 
     # --- Scheduling ---
     analysis_interval_minutes: int = 1

@@ -15,7 +15,7 @@ def test_default_settings():
     assert s.max_position_pct == 2.0
     assert s.max_open_positions == 4
     assert s.oanda_max_open_positions == 3
-    assert s.binance_max_open_positions == 2
+    assert s.binance_max_open_positions == 5
     assert s.ig_max_open_positions == 5
     assert s.min_risk_reward == 2.0
     assert s.analysis_interval_minutes == 1

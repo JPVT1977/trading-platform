@@ -721,17 +721,20 @@ async def main() -> None:
     market = MarketDataClient(settings)
     router.register(market)
 
-    # Register OANDA if configured
-    if settings.oanda_enabled:
+    # Register OANDA if credentials exist (needed for monitoring open positions)
+    if settings.oanda_configured:
         from bot.layer1_data.oanda_client import OandaClient
         oanda = OandaClient(settings)
         router.register(oanda)
-        logger.info(f"OANDA enabled: {settings.oanda_symbols}")
+        if settings.oanda_paused:
+            logger.info(f"OANDA registered (PAUSED — monitoring only, no new trades)")
+        else:
+            logger.info(f"OANDA enabled: {settings.oanda_symbols}")
     else:
         logger.info("OANDA not configured — crypto-only mode")
 
-    # Register IG Markets if configured
-    if settings.ig_enabled:
+    # Register IG Markets if credentials exist (needed for monitoring open positions)
+    if settings.ig_configured:
         from bot.layer1_data.ig_client import IGClient
         ig_client = IGClient(settings)
 
@@ -742,20 +745,30 @@ async def main() -> None:
             yahoo = YahooProvider()
             ig_broker = IGStockBroker(ig_client, yahoo, settings)
             stock_count = sum(1 for s in settings.ig_symbols if is_ig_stock(s))
-            logger.info(
-                f"IG Markets enabled: {settings.ig_symbols} "
-                f"({stock_count} stocks via Yahoo Finance)"
-            )
+            if settings.ig_paused:
+                logger.info(f"IG Markets registered (PAUSED — monitoring only, no new trades)")
+            else:
+                logger.info(
+                    f"IG Markets enabled: {settings.ig_symbols} "
+                    f"({stock_count} stocks via Yahoo Finance)"
+                )
         else:
             ig_broker = ig_client
-            logger.info(f"IG Markets enabled: {settings.ig_symbols}")
+            if settings.ig_paused:
+                logger.info(f"IG Markets registered (PAUSED — monitoring only, no new trades)")
+            else:
+                logger.info(f"IG Markets enabled: {settings.ig_symbols}")
 
         router.register(ig_broker)
     else:
         logger.info("IG Markets not configured — skipping")
 
-    # Combined symbol list
-    all_symbols = list(settings.symbols) + list(settings.oanda_symbols) + list(settings.ig_symbols)
+    # Combined symbol list — only include symbols for active (non-paused) brokers
+    all_symbols = list(settings.symbols)
+    if settings.oanda_enabled:
+        all_symbols += list(settings.oanda_symbols)
+    if settings.ig_enabled:
+        all_symbols += list(settings.ig_symbols)
 
     claude = ClaudeClient(settings)
     risk = RiskManager(settings, db)
