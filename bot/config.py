@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     counter_trend_adx_threshold: float = 25.0
 
     # --- Binance crypto broker ---
-    binance_starting_equity: float = 30000.0
+    binance_starting_equity: float = 19500.0
     binance_max_open_positions: int = 5
     binance_max_correlation_exposure: int = 3
     binance_min_confidence: float = 0.7
