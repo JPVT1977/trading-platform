@@ -727,7 +727,7 @@ async def main() -> None:
         oanda = OandaClient(settings)
         router.register(oanda)
         if settings.oanda_paused:
-            logger.info(f"OANDA registered (PAUSED — monitoring only, no new trades)")
+            logger.info("OANDA registered (PAUSED — monitoring only, no new trades)")
         else:
             logger.info(f"OANDA enabled: {settings.oanda_symbols}")
     else:
@@ -746,7 +746,7 @@ async def main() -> None:
             ig_broker = IGStockBroker(ig_client, yahoo, settings)
             stock_count = sum(1 for s in settings.ig_symbols if is_ig_stock(s))
             if settings.ig_paused:
-                logger.info(f"IG Markets registered (PAUSED — monitoring only, no new trades)")
+                logger.info("IG Markets registered (PAUSED — monitoring only, no new trades)")
             else:
                 logger.info(
                     f"IG Markets enabled: {settings.ig_symbols} "
@@ -755,7 +755,7 @@ async def main() -> None:
         else:
             ig_broker = ig_client
             if settings.ig_paused:
-                logger.info(f"IG Markets registered (PAUSED — monitoring only, no new trades)")
+                logger.info("IG Markets registered (PAUSED — monitoring only, no new trades)")
             else:
                 logger.info(f"IG Markets enabled: {settings.ig_symbols}")
 

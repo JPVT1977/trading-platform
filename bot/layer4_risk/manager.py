@@ -8,7 +8,6 @@ from bot.config import Settings
 from bot.database import queries
 from bot.database.connection import Database
 from bot.instruments import AssetClass, get_asset_class, get_instrument, is_oanda
-from bot.instruments import OANDA_INSTRUMENTS
 from bot.models import (
     DivergenceSignal,
     OrderState,

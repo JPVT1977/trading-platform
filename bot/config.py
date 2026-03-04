@@ -73,7 +73,8 @@ class Settings(BaseSettings):
     max_drawdown_pct: float = 15.0
     max_directional_pct: float = 70.0  # Max % of positions in one direction
     max_currency_exposure: int = 2  # Max net positions effectively long/short any single currency
-    counter_trend_adx_threshold: float = 25.0  # ADX above this = strong trend; reject counter-trend signals
+    # ADX above this = strong trend; reject counter-trend signals
+    counter_trend_adx_threshold: float = 25.0
 
     # --- Binance crypto broker ---
     binance_starting_equity: float = 30000.0

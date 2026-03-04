@@ -363,7 +363,7 @@ class ExecutionEngine:
                             sl_trail_stage,
                         )
                         if partial_status == "UPDATE 0":
-                            logger.warning(f"Close guard: order {order_id} already closed (partial TP1)")
+                            logger.warning(f"Close guard: {order_id} already closed (partial TP1)")
                             continue
                         pnl_prefix = "+" if pnl >= 0 else ""
                         logger.info(
@@ -469,7 +469,7 @@ class ExecutionEngine:
                         order_id, pnl, fees, current_price,
                     )
                     if status == "UPDATE 0":
-                        logger.warning(f"Close guard: order {order_id} already closed (post-TP1 SL)")
+                        logger.warning(f"Close guard: {order_id} already closed (post-TP1 SL)")
                         continue
                     closed_count += 1
                     self._log_close(
