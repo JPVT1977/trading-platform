@@ -239,11 +239,12 @@ class RiskManager:
 
         # Check 5: Correlation exposure — per asset class, not global
         # Cross-asset positions do NOT block each other
+        # Uses the minimum of asset-class limit and per-broker config
         if signal.direction is not None:
             signal_ac = get_asset_class(signal.symbol)
-            max_corr = _ASSET_CLASS_CORRELATION_LIMITS.get(
-                signal_ac, 4
-            )
+            asset_class_limit = _ASSET_CLASS_CORRELATION_LIMITS.get(signal_ac, 4)
+            broker_limit = self._settings.get_max_correlation_exposure(broker_id)
+            max_corr = min(asset_class_limit, broker_limit)
             same_class_same_dir = sum(
                 1 for p in portfolio.open_positions
                 if p.state in active_states

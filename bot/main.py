@@ -70,6 +70,7 @@ class ActiveSetup:
     expires_at: datetime
     direction: SignalDirection
     signal_id: str | None = None  # DB signal ID for traceability
+    db_id: str | None = None  # signal_setups table ID for persistence
 
 
 # Active setups keyed by "broker:symbol" to avoid cross-broker collisions
@@ -172,6 +173,77 @@ def _build_confirmed_signal(
         swing_length_bars=setup.signal.swing_length_bars,
         divergence_magnitude=setup.signal.divergence_magnitude,
     )
+
+
+async def _persist_setup(db: Database, setup: ActiveSetup, broker_id: str) -> str | None:
+    """Persist a 4h setup to the signal_setups table. Returns DB row ID."""
+    try:
+        from bot.database import queries as q
+        row = await db.pool.fetchrow(
+            q.INSERT_SIGNAL_SETUP,
+            setup.signal.symbol,
+            broker_id,
+            setup.direction.value,
+            setup.signal_id,
+            json.dumps(setup.signal.model_dump(mode="json")),
+            setup.detected_at,
+            setup.expires_at,
+        )
+        return str(row["id"]) if row else None
+    except Exception as e:
+        logger.error(f"Failed to persist setup: {e}")
+        return None
+
+
+async def _load_setups_from_db(db: Database) -> int:
+    """Load active (non-consumed, non-expired) setups from DB into memory.
+
+    Called once at startup to recover setups that survived a restart.
+    Returns the count of setups loaded.
+    """
+    try:
+        from bot.database import queries as q
+        rows = await db.pool.fetch(q.SELECT_ACTIVE_SETUPS)
+        loaded = 0
+        for row in rows:
+            signal_data = row["signal_data"]
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            signal = DivergenceSignal(**signal_data)
+            setup = ActiveSetup(
+                signal=signal,
+                detected_at=row["detected_at"],
+                expires_at=row["expires_at"],
+                direction=SignalDirection(row["direction"]),
+                signal_id=str(row["signal_id"]) if row["signal_id"] else None,
+                db_id=str(row["id"]),
+            )
+            key = _setup_key(row["symbol"])
+            _active_setups.setdefault(key, []).append(setup)
+            loaded += 1
+        return loaded
+    except Exception as e:
+        logger.error(f"Failed to load setups from DB: {e}")
+        return 0
+
+
+async def _consume_setup_in_db(db: Database, setup: ActiveSetup) -> None:
+    """Mark a consumed setup in the DB."""
+    if setup.db_id:
+        try:
+            from bot.database import queries as q
+            await db.pool.execute(q.CONSUME_SIGNAL_SETUP, setup.db_id)
+        except Exception as e:
+            logger.error(f"Failed to consume setup in DB: {e}")
+
+
+async def _expire_setups_in_db(db: Database) -> None:
+    """Delete expired setups from the DB."""
+    try:
+        from bot.database import queries as q
+        await db.pool.execute(q.EXPIRE_SIGNAL_SETUPS)
+    except Exception as e:
+        logger.error(f"Failed to expire setups in DB: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +356,7 @@ async def analysis_cycle(
         expired = _expire_setups(now)
         if expired:
             logger.info(f"Multi-TF: expired {expired} setup(s)")
+        await _expire_setups_in_db(db)
         active_count = sum(len(v) for v in _active_setups.values())
         if active_count:
             logger.info(
@@ -465,6 +538,8 @@ async def analysis_cycle(
                             direction=signal.direction,
                             signal_id=signal_id,
                         )
+                        # Persist to DB so setup survives restarts
+                        setup.db_id = await _persist_setup(db, setup, broker_id)
                         setup_key = _setup_key(symbol)
                         _active_setups.setdefault(setup_key, []).append(setup)
                         logger.info(
@@ -507,11 +582,12 @@ async def analysis_cycle(
                             result.symbol_details[candle_key] = "multi_tf_invalid_levels"
                             continue
 
-                        # Remove the consumed setup
+                        # Remove the consumed setup (in-memory + DB)
                         setup_key = _setup_key(symbol)
                         _active_setups[setup_key].remove(matching_setup)
                         if not _active_setups[setup_key]:
                             del _active_setups[setup_key]
+                        await _consume_setup_in_db(db, matching_setup)
 
                         # Score the confirmed signal
                         confirmed_scored = compute_score(confirmed, indicators, settings)
@@ -690,6 +766,12 @@ async def main() -> None:
 
     # Start health check server (Fly.io needs this)
     await health.start()
+
+    # Load persisted setups from DB (survives restarts)
+    if settings.use_multi_tf_confirmation:
+        loaded = await _load_setups_from_db(db)
+        if loaded:
+            logger.info(f"Loaded {loaded} persisted setup(s) from database")
 
     # Send startup notifications
     multi_tf_status = (

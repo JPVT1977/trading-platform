@@ -14,7 +14,7 @@ def test_default_settings():
     assert s.exchange_sandbox is True
     assert s.max_position_pct == 2.0
     assert s.max_open_positions == 4
-    assert s.oanda_max_open_positions == 5
+    assert s.oanda_max_open_positions == 3
     assert s.binance_max_open_positions == 2
     assert s.ig_max_open_positions == 5
     assert s.min_risk_reward == 2.0
@@ -84,3 +84,31 @@ def test_validate_live_valid():
     )
     errors = s.validate_for_startup()
     assert len(errors) == 0
+
+
+def test_hardened_defaults():
+    """Platform hardening: verify tightened defaults (4 Mar 2026)."""
+    s = Settings(
+        anthropic_api_key="test",
+        database_url="postgresql://localhost/test",
+    )
+    # Change 1: Tighter OANDA/IG limits
+    assert s.oanda_max_open_positions == 3
+    assert s.oanda_min_confidence == 0.75
+    assert s.ig_min_confidence == 0.80
+    assert s.get_min_confidence("ig") == 0.80
+    assert s.get_min_confidence("oanda") == 0.75
+    assert s.get_min_confidence("binance") == 0.7
+    assert s.get_max_open_positions("oanda") == 3
+
+    # Change 3: Claude timeout
+    assert s.claude_timeout_seconds == 60
+
+    # Change 4: Volume filter re-enabled
+    assert s.volume_low_threshold == 0.20
+
+    # Change 6: Time-based exit
+    assert s.max_position_age_hours == 72
+
+    # Change 9: Consecutive loss alert
+    assert s.consecutive_loss_alert_threshold == 5

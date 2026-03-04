@@ -87,9 +87,9 @@ IG blocks historical OHLCV for stock CFDs (`unauthorised.access.to.equity.except
 
 | Setting | Binance | OANDA | IG |
 |---------|---------|-------|-----|
-| Max open positions | 2 | 5 | 5 |
+| Max open positions | 2 | 3 | 5 |
 | Max correlation exposure | 3 | 3 | 3 |
-| Min confidence | 0.70 | 0.70 | 0.70 |
+| Min confidence | 0.70 | 0.75 | 0.80 |
 
 ---
 
@@ -136,14 +136,14 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | 10 | Swing length minimums (10 bars 4h, 7 bars 1h) |
 | 11 | RSI divergence magnitude >= 3.0 |
 | 12 | Zero/near-zero volume guard |
-| 13 | Low volume gate — **disabled** (threshold 0.0) |
+| 13 | Low volume gate — **re-enabled** (threshold 0.20, re-enabled 4 Mar 2026) |
 | 14 | Candlestick reversal pattern — **disabled** (require_candle_pattern=False) |
 
 ### Key Tuning Parameters (config.py)
 
 | Parameter | Current Value | Purpose |
 |-----------|--------------|---------|
-| `volume_low_threshold` | 0.0 (disabled) | Rule 13 — was 0.50→0.35→0.10→0.0 (disabled 26 Feb 2026) |
+| `volume_low_threshold` | 0.20 | Rule 13 — re-enabled 4 Mar 2026 (was 0.50→0.35→0.10→0.0→0.20) |
 | `require_candle_pattern` | False | Rule 14 — candle pattern toggle (disabled 26 Feb 2026) |
 | `min_divergence_score` | 5.0 | Minimum scoring threshold |
 | `min_confirming_indicators` | 2 | Rule 9 — oscillator confluence |
@@ -162,6 +162,12 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 | `min_atr_stop_commodity` | 1.0 | Min ATR multiple for commodity stops (added 2 Mar 2026) |
 | `max_currency_exposure` | 2 | Max net positions long/short any single fiat currency (added 3 Mar 2026) |
 | `counter_trend_adx_threshold` | 25.0 | Rule 7b — ADX above this triggers counter-trend rejection (added 3 Mar 2026) |
+| `claude_timeout_seconds` | 60 | Claude API request timeout (added 4 Mar 2026) |
+| `max_position_age_hours` | 72 | Time-based exit for stale positions with no trailing (added 4 Mar 2026) |
+| `consecutive_loss_alert_threshold` | 5 | Alert after N consecutive losing trades (added 4 Mar 2026) |
+| `oanda_max_open_positions` | 3 | OANDA max positions (was 5, tightened 4 Mar 2026) |
+| `oanda_min_confidence` | 0.75 | OANDA min confidence (was 0.70, tightened 4 Mar 2026) |
+| `ig_min_confidence` | 0.80 | IG min confidence (was 0.70, tightened 4 Mar 2026) |
 
 ---
 
@@ -206,6 +212,13 @@ The deterministic validator in `validator.py` runs these rules in order. First f
 23. **Pinned production deps** — `requirements.lock` has exact versions for Docker builds. `requirements.txt` for development.
 24. **Currency exposure filter** — Tracks net fiat currency exposure across all open positions (forex pairs decomposed into base/quote; non-forex only tracks quote). Max 2 positions effectively long/short any single currency. Prevents correlated USD-short blowups like 26 Feb 2026 (-A$361). Stablecoins normalised to USD.
 25. **Counter-trend ADX filter** — Rejects signals opposing a confirmed strong trend (ADX >= 25 + price vs EMA200 position + EMA200 slope must agree). Applies to all asset classes. Ambiguous trends pass through.
+26. **Close query state guards** — `UPDATE_ORDER_CLOSE` and `UPDATE_ORDER_PARTIAL_CLOSE` include `AND state IN (...)` WHERE clause. Engine checks return value (`UPDATE 0` = already closed → skip). Prevents double P&L if same order processed twice.
+27. **Claude API timeout** — 60s timeout on Claude API calls with `APITimeoutError` added to retry exceptions. Prevents a hung Claude call from blocking all subsequent analysis cycles.
+28. **Per-broker correlation connected** — `RiskManager.check_entry()` uses `min(asset_class_limit, broker_limit)` for correlation exposure. `settings.get_max_correlation_exposure(broker_id)` is now actually called.
+29. **Time-based exit** — Positions with `tp_stage=0` and `sl_trail_stage=0` (no trailing activated) are auto-closed after `max_position_age_hours` (72h). Prevents stale positions sitting indefinitely until SL.
+30. **Ticker failure alerting** — Consecutive ticker fetch failures tracked per symbol. After 3+ failures, Telegram alert sent warning positions are unprotected.
+31. **Persisted signal setups** — `signal_setups` table stores 4h setups to DB alongside in-memory dict. On startup, active setups loaded from DB. Survives deploys/restarts. `ActiveSetup.db_id` links to the persisted row.
+32. **Consecutive loss alert** — After each position close, checks last N closed orders. If all N are losses, sends Telegram + SMS alert. Threshold configurable via `consecutive_loss_alert_threshold`.
 
 ---
 

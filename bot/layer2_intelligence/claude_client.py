@@ -21,7 +21,10 @@ class ClaudeClient:
     """Claude API integration using tool_use for guaranteed structured output."""
 
     def __init__(self, settings: Settings) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self._client = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=settings.claude_timeout_seconds,
+        )
         self._model = settings.claude_model
         self._max_tokens = settings.claude_max_tokens
 
@@ -30,6 +33,7 @@ class ClaudeClient:
         wait=wait_exponential(multiplier=2, min=4, max=60),
         retry=retry_if_exception_type((
             anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
             anthropic.RateLimitError,
             anthropic.InternalServerError,
         )),

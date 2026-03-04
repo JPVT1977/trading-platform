@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-5-20250929"
     claude_max_tokens: int = 1024
+    claude_timeout_seconds: int = 60
 
     # --- Database (asyncpg) ---
     database_url: str = ""
@@ -80,13 +81,13 @@ class Settings(BaseSettings):
     binance_max_correlation_exposure: int = 3
     binance_min_confidence: float = 0.7
 
-    oanda_max_open_positions: int = 5
+    oanda_max_open_positions: int = 3
     oanda_max_correlation_exposure: int = 3
-    oanda_min_confidence: float = 0.7
+    oanda_min_confidence: float = 0.75
 
     ig_max_open_positions: int = 5
     ig_max_correlation_exposure: int = 3
-    ig_min_confidence: float = 0.7
+    ig_min_confidence: float = 0.80
 
     # --- OANDA Forex Broker (optional) ---
     oanda_api_token: str = ""
@@ -153,11 +154,15 @@ class Settings(BaseSettings):
     min_divergence_magnitude_rsi: float = 3.0
     volume_sma_period: int = 20
     candle_gate_lookback: int = 3
-    volume_low_threshold: float = 0.0
+    volume_low_threshold: float = 0.20
     require_candle_pattern: bool = False
 
     lookback_candles: int = 200
     payload_lookback: int = 30
+
+    # --- Position Management ---
+    max_position_age_hours: int = 72
+    consecutive_loss_alert_threshold: int = 5
 
     def get_max_open_positions(self, broker_id: str = "binance") -> int:
         if broker_id == "oanda":

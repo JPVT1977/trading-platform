@@ -749,7 +749,8 @@ class TestRule13LowVolume:
         assert "Low volume" not in result.reason
 
     def test_disabled_when_threshold_zero(self, settings):
-        """Rule 13 is effectively disabled when volume_low_threshold is 0.0 (default)."""
+        """Rule 13 is effectively disabled when volume_low_threshold is 0.0."""
+        settings.volume_low_threshold = 0.0
         vols = [1000.0] * 29 + [1.0]  # Extremely low volume
         indicators = _make_indicators(volumes=vols, volume_sma=[1000.0] * 30)
         signal = DivergenceSignal(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time as time_mod
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -47,6 +48,7 @@ class ExecutionEngine:
         self._risk = risk_manager
         self._telegram = telegram
         self._sms = sms
+        self._ticker_failures: dict[str, int] = {}
 
     async def execute_signal(
         self, signal: DivergenceSignal, portfolio: PortfolioState,
@@ -201,8 +203,18 @@ class ExecutionEngine:
                 broker = self._router.get_broker(symbol)
                 ticker = await broker.fetch_ticker(symbol)
                 tickers[symbol] = float(ticker["last"])
+                self._ticker_failures.pop(symbol, None)
             except Exception as e:
                 logger.warning(f"Failed to fetch ticker for {symbol}: {e}")
+                count = self._ticker_failures.get(symbol, 0) + 1
+                self._ticker_failures[symbol] = count
+                if count >= 3:
+                    msg = (
+                        f"Ticker fetch failed {count}x consecutively for {symbol} — "
+                        f"positions UNPROTECTED (SL/TP not checked)"
+                    )
+                    logger.error(msg)
+                    await self._telegram.send_error_alert(msg, f"Ticker failure: {symbol}")
 
         for row in rows:
             order_id = row["id"]
@@ -236,6 +248,33 @@ class ExecutionEngine:
                 continue
 
             inst = get_instrument(symbol)
+
+            # Time-based exit: close stale positions with no trailing activated
+            created_at = row.get("created_at")
+            if created_at is not None and tp_stage == 0:
+                current_trail = row["sl_trail_stage"] or 0
+                if current_trail == 0:
+                    age_hours = (datetime.now(UTC) - created_at).total_seconds() / 3600
+                    if age_hours >= self._settings.max_position_age_hours:
+                        pnl, fees = self._calc_pnl(
+                            direction, entry_price, current_price, remaining_qty, inst,
+                        )
+                        status = await pool.execute(
+                            queries.UPDATE_ORDER_CLOSE,
+                            order_id, pnl, fees, current_price,
+                        )
+                        if status != "UPDATE 0":
+                            closed_count += 1
+                            self._log_close(
+                                symbol, direction,
+                                f"TIME EXIT ({age_hours:.0f}h)",
+                                current_price, pnl, fees,
+                            )
+                            await self._send_close_alert(
+                                order_id, symbol, direction, entry_price, stop_loss,
+                                take_profit_1, remaining_qty, current_price, pnl, fees,
+                            )
+                        continue
 
             # ==========================================================
             # Stage 0: Full position — check SL or TP1
@@ -283,10 +322,13 @@ class ExecutionEngine:
                     pnl, fees = self._calc_pnl(
                         direction, entry_price, current_price, remaining_qty, inst,
                     )
-                    await pool.execute(
+                    status = await pool.execute(
                         queries.UPDATE_ORDER_CLOSE,
                         order_id, pnl, fees, current_price,
                     )
+                    if status == "UPDATE 0":
+                        logger.warning(f"Close guard: order {order_id} already closed (SL)")
+                        continue
                     closed_count += 1
                     self._log_close(symbol, direction, "STOP LOSS", current_price, pnl, fees)
                     await self._send_close_alert(
@@ -315,11 +357,14 @@ class ExecutionEngine:
                             new_sl = max(stop_loss, entry_price)
                         else:
                             new_sl = min(stop_loss, entry_price)
-                        await pool.execute(
+                        partial_status = await pool.execute(
                             queries.UPDATE_ORDER_PARTIAL_CLOSE,
                             order_id, new_remaining, pnl, fees, 1, new_sl,
                             sl_trail_stage,
                         )
+                        if partial_status == "UPDATE 0":
+                            logger.warning(f"Close guard: order {order_id} already closed (partial TP1)")
+                            continue
                         pnl_prefix = "+" if pnl >= 0 else ""
                         logger.info(
                             f"PARTIAL CLOSE TP1: {symbol} {direction} | "
@@ -343,10 +388,13 @@ class ExecutionEngine:
                         pnl, fees = self._calc_pnl(
                             direction, entry_price, current_price, remaining_qty, inst,
                         )
-                        await pool.execute(
+                        status = await pool.execute(
                             queries.UPDATE_ORDER_CLOSE,
                             order_id, pnl, fees, current_price,
                         )
+                        if status == "UPDATE 0":
+                            logger.warning(f"Close guard: order {order_id} already closed (TP1)")
+                            continue
                         closed_count += 1
                         self._log_close(symbol, direction, "TAKE PROFIT", current_price, pnl, fees)
                         await self._send_close_alert(
@@ -416,10 +464,13 @@ class ExecutionEngine:
                     pnl, fees = self._calc_pnl(
                         direction, entry_price, current_price, remaining_qty, inst,
                     )
-                    await pool.execute(
+                    status = await pool.execute(
                         queries.UPDATE_ORDER_CLOSE,
                         order_id, pnl, fees, current_price,
                     )
+                    if status == "UPDATE 0":
+                        logger.warning(f"Close guard: order {order_id} already closed (post-TP1 SL)")
+                        continue
                     closed_count += 1
                     self._log_close(
                         symbol, direction, "STOP LOSS (post-TP1)",
@@ -441,16 +492,23 @@ class ExecutionEngine:
                     pnl, fees = self._calc_pnl(
                         direction, entry_price, current_price, remaining_qty, inst,
                     )
-                    await pool.execute(
+                    status = await pool.execute(
                         queries.UPDATE_ORDER_CLOSE,
                         order_id, pnl, fees, current_price,
                     )
+                    if status == "UPDATE 0":
+                        logger.warning(f"Close guard: order {order_id} already closed (TP2)")
+                        continue
                     closed_count += 1
                     self._log_close(symbol, direction, "TAKE PROFIT 2", current_price, pnl, fees)
                     await self._send_close_alert(
                         order_id, symbol, direction, entry_price, stop_loss,
                         take_profit_1, remaining_qty, current_price, pnl, fees,
                     )
+
+        # Check for consecutive losses after closing positions
+        if closed_count > 0:
+            await self._check_consecutive_losses()
 
         return closed_count
 
@@ -543,10 +601,13 @@ class ExecutionEngine:
         pnl_net = pnl - fees
 
         # Close the order
-        await pool.execute(
+        status = await pool.execute(
             queries.UPDATE_ORDER_CLOSE,
             order_id, pnl_net, fees, exit_price,
         )
+        if status == "UPDATE 0":
+            logger.warning(f"Close guard: reversal order {order_id} already closed")
+            return
 
         pnl_prefix = "+" if pnl_net >= 0 else ""
         logger.info(
@@ -624,3 +685,24 @@ class ExecutionEngine:
         except Exception as e:
             logger.error(f"Failed to persist order: {e}")
             return None
+
+    async def _check_consecutive_losses(self) -> None:
+        """Check for consecutive losing trades and alert if threshold exceeded."""
+        try:
+            threshold = self._settings.consecutive_loss_alert_threshold
+            pool = self._db.pool
+            rows = await pool.fetch(queries.SELECT_RECENT_CLOSED_ORDERS, threshold)
+            if len(rows) < threshold:
+                return
+            all_losses = all(float(r["pnl"]) < 0 for r in rows)
+            if all_losses:
+                msg = (
+                    f"LOSING STREAK: {threshold} consecutive losses detected. "
+                    f"Review strategy immediately."
+                )
+                logger.critical(msg)
+                await self._telegram.send_error_alert(msg, "Consecutive loss alert")
+                if self._sms:
+                    await self._sms.send_error_alert(msg, "Consecutive loss alert")
+        except Exception as e:
+            logger.error(f"Consecutive loss check failed: {e}")

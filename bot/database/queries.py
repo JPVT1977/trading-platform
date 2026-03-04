@@ -79,6 +79,7 @@ UPDATE_ORDER_CLOSE = """
         fees = COALESCE(fees, 0) + $3, exit_price = $4,
         remaining_quantity = 0, closed_at = NOW(), updated_at = NOW()
     WHERE id = $1
+      AND state IN ('filled', 'submitted', 'partially_filled')
 """
 
 UPDATE_ORDER_PARTIAL_CLOSE = """
@@ -91,6 +92,7 @@ UPDATE_ORDER_PARTIAL_CLOSE = """
         sl_trail_stage = $7,
         updated_at = NOW()
     WHERE id = $1
+      AND state IN ('filled', 'partially_filled')
 """
 
 UPDATE_ORDER_STOP_LOSS = """
@@ -270,4 +272,45 @@ COUNT_OPEN_ORDERS_BY_BROKER = """
     SELECT COUNT(*) FROM orders
     WHERE state NOT IN ('closed', 'cancelled', 'rejected', 'error')
       AND broker = $1
+"""
+
+# ---------------------------------------------------------------------------
+# Signal Setups (persisted 4h setups for multi-TF confirmation)
+# ---------------------------------------------------------------------------
+
+INSERT_SIGNAL_SETUP = """
+    INSERT INTO signal_setups (
+        symbol, broker, direction, signal_id, signal_data,
+        detected_at, expires_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id
+"""
+
+SELECT_ACTIVE_SETUPS = """
+    SELECT * FROM signal_setups
+    WHERE consumed = FALSE AND expires_at > NOW()
+    ORDER BY detected_at ASC
+"""
+
+CONSUME_SIGNAL_SETUP = """
+    UPDATE signal_setups
+    SET consumed = TRUE
+    WHERE id = $1
+"""
+
+EXPIRE_SIGNAL_SETUPS = """
+    DELETE FROM signal_setups
+    WHERE consumed = FALSE AND expires_at <= NOW()
+"""
+
+# ---------------------------------------------------------------------------
+# Consecutive Loss Detection
+# ---------------------------------------------------------------------------
+
+SELECT_RECENT_CLOSED_ORDERS = """
+    SELECT pnl FROM orders
+    WHERE state = 'closed' AND pnl IS NOT NULL
+    ORDER BY closed_at DESC
+    LIMIT $1
 """

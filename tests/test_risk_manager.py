@@ -90,6 +90,7 @@ class TestRiskChecks:
             anthropic_api_key="test",
             database_url="test",
             oanda_max_open_positions=10,
+            oanda_max_correlation_exposure=10,  # Disable correlation for this test
             max_directional_pct=100.0,  # Disable directional cap for this test
             max_currency_exposure=10,  # Disable currency exposure for this test
         )
@@ -277,6 +278,7 @@ class TestDirectionalExposureCap:
             anthropic_api_key="test",
             database_url="test",
             binance_max_open_positions=10,
+            binance_max_correlation_exposure=10,  # Disable correlation for this test
             max_directional_pct=70.0,
             max_currency_exposure=10,  # Disable currency exposure for this test
         )
@@ -688,6 +690,102 @@ class TestCurrencyExposure:
         result = rm.check_entry(signal, portfolio, broker_id="oanda")
         # Only 1 active USD-short position + 1 new = 2 = at limit, not over
         assert result.approved is True
+
+
+class TestBrokerCorrelationConfig:
+    """Test that per-broker correlation config is connected (Change 5)."""
+
+    def test_broker_limit_overrides_asset_class(self):
+        """When binance_max_correlation_exposure=1, rejects at 1 same-direction position."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+            binance_max_correlation_exposure=1,
+            max_directional_pct=100.0,
+            max_currency_exposure=10,
+        )
+        rm = RiskManager(s)
+        # One long crypto position already open
+        orders = [
+            TradeOrder(
+                symbol="BTC/USDT",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=42000,
+                stop_loss=41500,
+                take_profit_1=43000,
+                quantity=0.1,
+            )
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=9000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.LONG,
+            reasoning="test",
+            entry_price=3000,
+            stop_loss=2900,
+            take_profit_1=3200,
+            symbol="ETH/USDT",
+            timeframe="4h",
+        )
+        # Asset class limit for crypto = 4, but broker limit = 1
+        # min(4, 1) = 1 → already at 1 long crypto → rejected
+        result = rm.check_entry(signal, portfolio, broker_id="binance")
+        assert result.approved is False
+        assert "Correlation" in result.reason
+
+    def test_asset_class_limit_still_works(self):
+        """When broker limit is high, asset-class limit still applies."""
+        s = Settings(
+            trading_mode=TradingMode.DEV,
+            anthropic_api_key="test",
+            database_url="test",
+            binance_max_open_positions=10,
+            binance_max_correlation_exposure=10,  # Very high
+            max_directional_pct=100.0,
+            max_currency_exposure=10,
+        )
+        rm = RiskManager(s)
+        # 4 long crypto positions (at asset-class limit of 4)
+        orders = [
+            TradeOrder(
+                symbol=f"PAIR{i}/USDT",
+                direction=SignalDirection.LONG,
+                state=OrderState.FILLED,
+                entry_price=100,
+                stop_loss=95,
+                take_profit_1=110,
+                quantity=1,
+            )
+            for i in range(4)
+        ]
+        portfolio = PortfolioState(
+            total_equity=10000.0,
+            available_balance=6000.0,
+            open_positions=orders,
+        )
+        signal = DivergenceSignal(
+            divergence_detected=True,
+            confidence=0.85,
+            direction=SignalDirection.LONG,
+            reasoning="test",
+            entry_price=42000,
+            stop_loss=41500,
+            take_profit_1=43000,
+            symbol="NEW/USDT",
+            timeframe="4h",
+        )
+        # min(4, 10) = 4 → already at 4 → rejected
+        result = rm.check_entry(signal, portfolio, broker_id="binance")
+        assert result.approved is False
+        assert "Correlation" in result.reason
 
 
 class TestCircuitBreaker:

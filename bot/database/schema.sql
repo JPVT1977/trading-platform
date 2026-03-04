@@ -334,6 +334,26 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- ===================================================================
+-- Signal Setups: persisted 4h setups for multi-TF confirmation
+-- ===================================================================
+
+CREATE TABLE IF NOT EXISTS signal_setups (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    symbol      TEXT NOT NULL,
+    broker      TEXT NOT NULL,
+    direction   TEXT NOT NULL,
+    signal_id   UUID REFERENCES signals(id),
+    signal_data JSONB NOT NULL,
+    detected_at TIMESTAMPTZ NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    consumed    BOOLEAN DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_setups_active
+    ON signal_setups (consumed, expires_at) WHERE consumed = FALSE;
+
 -- One-time migration: for closed orders, filled_price was overwritten
 -- with the exit price by UPDATE_ORDER_CLOSE. Move it to exit_price
 -- and restore filled_price to entry_price (paper fill = entry).

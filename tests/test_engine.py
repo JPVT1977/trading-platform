@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -491,3 +492,243 @@ class TestPreTP1TrailingStop:
         calls = engine._db.pool.execute.call_args_list
         sl_calls = [c for c in calls if "stop_loss = $2" in str(c)]
         assert len(sl_calls) == 0
+
+
+class TestCloseGuards:
+    """Test that UPDATE 0 return from close queries prevents double-counting."""
+
+    @pytest.mark.asyncio
+    async def test_close_guard_skips_already_closed(self, engine):
+        """When UPDATE_ORDER_CLOSE returns UPDATE 0, closed_count is NOT incremented."""
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock(return_value="UPDATE 0")
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 88.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+
+    @pytest.mark.asyncio
+    async def test_close_guard_counts_successful_close(self, engine):
+        """When UPDATE_ORDER_CLOSE returns UPDATE 1, closed_count IS incremented."""
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock(return_value="UPDATE 1")
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 88.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 1
+
+
+class TestTimeBasedExit:
+    """Test time-based exit for stale positions (Change 6)."""
+
+    @pytest.mark.asyncio
+    async def test_stale_position_closed_after_max_age(self, engine):
+        """Position older than max_position_age_hours with no trailing gets closed."""
+        engine._settings.max_position_age_hours = 72
+
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            sl_trail_stage=0,
+        )
+        row["created_at"] = datetime.now(UTC) - timedelta(hours=73)
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock(return_value="UPDATE 1")
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 95.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 1
+
+    @pytest.mark.asyncio
+    async def test_stale_position_not_closed_if_trailing(self, engine):
+        """Position with sl_trail_stage=1 is NOT closed by time exit."""
+        engine._settings.max_position_age_hours = 72
+
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=100.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            sl_trail_stage=1,
+        )
+        row["created_at"] = datetime.now(UTC) - timedelta(hours=73)
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock(return_value="UPDATE 1")
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 105.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        # Should NOT be closed by time exit (trailing is active)
+        assert closed == 0
+
+    @pytest.mark.asyncio
+    async def test_young_position_not_closed(self, engine):
+        """Position under max age is NOT closed."""
+        engine._settings.max_position_age_hours = 72
+
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            sl_trail_stage=0,
+        )
+        row["created_at"] = datetime.now(UTC) - timedelta(hours=10)
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 105.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 0
+
+
+class TestTickerFailureAlerting:
+    """Test ticker failure tracking and alerting (Change 7)."""
+
+    @pytest.mark.asyncio
+    async def test_alert_after_3_consecutive_failures(self, engine):
+        """3 consecutive ticker failures for a symbol triggers alert."""
+        row = _make_order_row(symbol="FAIL/USDT")
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(side_effect=Exception("timeout"))
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        # Run 3 times to accumulate failures
+        for _ in range(3):
+            with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+                mock_inst.return_value = MagicMock(fee_rate=0.0)
+                await engine.monitor_open_positions()
+
+        assert engine._ticker_failures.get("FAIL/USDT", 0) >= 3
+        engine._telegram.send_error_alert.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_success_resets_failure_counter(self, engine):
+        """Successful ticker fetch resets the failure counter."""
+        engine._ticker_failures["BTC/USDT"] = 2
+
+        row = _make_order_row(
+            direction="long", entry_price=100.0, stop_loss=90.0,
+            take_profit_1=120.0, quantity=10.0, tp_stage=0,
+        )
+
+        engine._db.pool.fetch = AsyncMock(return_value=[row])
+        engine._db.pool.execute = AsyncMock()
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 105.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            await engine.monitor_open_positions()
+
+        assert engine._ticker_failures.get("BTC/USDT", 0) == 0
+
+
+class TestConsecutiveLossAlert:
+    """Test consecutive loss detection and alerting (Change 9)."""
+
+    @pytest.mark.asyncio
+    async def test_alert_on_consecutive_losses(self, engine):
+        """5 consecutive losses triggers alert."""
+        engine._settings.consecutive_loss_alert_threshold = 5
+
+        # Mock: 5 consecutive losses
+        loss_rows = [{"pnl": -50.0} for _ in range(5)]
+        engine._db.pool.fetch = AsyncMock(side_effect=[
+            # First call: SELECT_OPEN_ORDERS (position monitor)
+            [_make_order_row(
+                direction="long", entry_price=100.0, stop_loss=90.0,
+                take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            )],
+            # Second call: SELECT_RECENT_CLOSED_ORDERS (consecutive loss check)
+            loss_rows,
+        ])
+        engine._db.pool.execute = AsyncMock(return_value="UPDATE 1")
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 88.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 1
+        # Check that error alert was called (for consecutive losses)
+        error_calls = engine._telegram.send_error_alert.call_args_list
+        loss_alert_calls = [c for c in error_calls if "LOSING STREAK" in str(c)]
+        assert len(loss_alert_calls) >= 1
+
+    @pytest.mark.asyncio
+    async def test_no_alert_with_mixed_results(self, engine):
+        """4 losses + 1 win does NOT trigger alert."""
+        engine._settings.consecutive_loss_alert_threshold = 5
+
+        mixed_rows = [
+            {"pnl": -50.0}, {"pnl": -30.0}, {"pnl": -20.0},
+            {"pnl": -10.0}, {"pnl": 100.0},  # 1 win breaks the streak
+        ]
+        engine._db.pool.fetch = AsyncMock(side_effect=[
+            [_make_order_row(
+                direction="long", entry_price=100.0, stop_loss=90.0,
+                take_profit_1=120.0, quantity=10.0, tp_stage=0,
+            )],
+            mixed_rows,
+        ])
+        engine._db.pool.execute = AsyncMock(return_value="UPDATE 1")
+
+        broker = AsyncMock()
+        broker.fetch_ticker = AsyncMock(return_value={"last": 88.0})
+        engine._router.get_broker = MagicMock(return_value=broker)
+
+        with patch("bot.layer3_execution.engine.get_instrument") as mock_inst:
+            mock_inst.return_value = MagicMock(fee_rate=0.0)
+            closed = await engine.monitor_open_positions()
+
+        assert closed == 1
+        error_calls = engine._telegram.send_error_alert.call_args_list
+        loss_alert_calls = [c for c in error_calls if "LOSING STREAK" in str(c)]
+        assert len(loss_alert_calls) == 0
