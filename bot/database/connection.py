@@ -8,6 +8,11 @@ from loguru import logger
 from bot.config import Settings
 
 
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Initialise each new connection — sets statement timeout."""
+    await conn.execute("SET statement_timeout = '30s'")
+
+
 class Database:
     """asyncpg connection pool with auto-migration on startup."""
 
@@ -24,9 +29,11 @@ class Database:
         # The sslmode parameter in the DATABASE_URL controls SSL negotiation.
         self._pool = await asyncpg.create_pool(
             self._dsn,
-            min_size=2,
-            max_size=10,
+            min_size=1,
+            max_size=8,
+            max_inactive_connection_lifetime=300,
             command_timeout=30,
+            init=_init_connection,
         )
 
         # Run schema migration on startup
